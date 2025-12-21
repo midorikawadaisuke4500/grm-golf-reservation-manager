@@ -708,23 +708,37 @@
             },
 
             async approveOne(reservationId) {
-                if (!confirm('この予約をカレンダーに登録しますか？')) return;
+                console.log('approveOne called with ID:', reservationId);
+
+                // reservationIdのバリデーション
+                if (!reservationId || reservationId === 'undefined') {
+                    alert('❌ 予約IDが取得できませんでした');
+                    return;
+                }
+
+                const result = window.confirm('この予約をカレンダーに登録しますか？\nID: ' + reservationId);
+                if (!result) {
+                    console.log('User cancelled');
+                    return;
+                }
 
                 try {
                     const baseUrl = '<?= ScriptApp.getService().getUrl() ?>';
+                    console.log('Calling API:', baseUrl + '?action=approveReservation&id=' + reservationId);
                     const response = await fetch(baseUrl + '?action=approveReservation&id=' + reservationId);
-                    const result = await response.json();
+                    const apiResult = await response.json();
+                    console.log('API result:', apiResult);
 
-                    if (result.success) {
+                    if (apiResult.success) {
                         alert('✅ カレンダーに登録しました');
                         await this.loadData();
                         this.renderView('calendar');
                     } else {
-                        alert('❌ 登録に失敗しました: ' + (result.error || ''));
+                        alert('❌ 登録に失敗しました: ' + (apiResult.error || ''));
                     }
                 } catch (e) {
                     console.error('Failed to approve:', e);
-                    alert('❌ エラーが発生しました');
+                    alert('❌ エラーが発生しました: ' + e.message);
                 }
             },
 
