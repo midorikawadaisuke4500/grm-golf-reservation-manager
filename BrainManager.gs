@@ -59,6 +59,12 @@ function handleGetRequest(action, params) {
           mode: isLineEnabled() ? 'hybrid' : 'web'
         };
         break;
+      case 'approveReservation':
+        result = approveReservationToCalendar(params.id);
+        break;
+      case 'approveAllReservations':
+        result = approveAllReservationsToCalendar();
+        break;
       default:
         result = { error: 'Unknown action: ' + action };
     }
@@ -2578,4 +2584,135 @@ function fixOldWebAppUrl() {
   console.log('========================================');
   console.log('新しいURL: ' + newUrl);
   console.log('========================================');
+}
+
+// ========================================
+// WEB UI 承認機能
+// ========================================
+
+/**
+ * 個別の予約をカレンダーに登録
+ */
+function approveReservationToCalendar(reservationId) {
+  console.log('承認処理開始: ' + reservationId);
+  
+  const calendarId = Config.get('CALENDAR_ID');
+  const calendar = CalendarApp.getCalendarById(calendarId);
+  
+  if (!calendar) {
+    return { success: false, error: 'カレンダーが見つかりません' };
+  }
+  
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const sheet = ss.getSheetByName('Reservation_DB');
+  const data = sheet.getDataRange().getValues();
+  
+  for (let i = 1; i < data.length; i++) {
+    if (String(data[i][0]) === reservationId && data[i][6] === 'pending') {
+      try {
+        const dateStr = data[i][2];
+        let timeStr = data[i][5];
+        
+        let hour, minute;
+        if (timeStr instanceof Date) {
+          hour = timeStr.getHours();
+          minute = timeStr.getMinutes();
+          timeStr = String(hour).padStart(2, '0') + ':' + String(minute).padStart(2, '0');
+        } else {
+          const timeParts = String(timeStr).split(':');
+          hour = parseInt(timeParts[0]);
+          minute = parseInt(timeParts[1]);
+        }
+        
+        const eventDate = new Date(dateStr);
+        eventDate.setHours(hour, minute, 0, 0);
+        const endDate = new Date(eventDate.getTime() + 5 * 60 * 60 * 1000);
+        
+        const title = '【外出】ゴルフ 麻倉 ' + timeStr + ' 残数3';
+        const event = calendar.createEvent(title, eventDate, endDate, {
+          location: '麻倉ゴルフ倶楽部',
+          description: '[System:GolfMgr] ID:' + reservationId
+        });
+        
+        // ステータス更新
+        sheet.getRange(i + 1, 7).setValue('confirmed');
+        sheet.getRange(i + 1, 8).setValue(event.getId());
+        sheet.getRange(i + 1, 9).setValue(new Date());
+        
+        console.log('✅ 承認完了: ' + reservationId);
+        return { success: true, id: reservationId, eventId: event.getId() };
+      } catch (e) {
+        console.log('❌ エラー: ' + e.message);
+        return { success: false, error: e.message };
+      }
+    }
+  }
+  
+  return { success: false, error: '予約が見つかりません: ' + reservationId };
+}
+
+/**
+ * すべての承認待ち予約をカレンダーに登録
+ */
+function approveAllReservationsToCalendar() {
+  console.log('一括承認処理開始');
+  
+  const calendarId = Config.get('CALENDAR_ID');
+  const calendar = CalendarApp.getCalendarById(calendarId);
+  
+  if (!calendar) {
+    return { success: false, error: 'カレンダーが見つかりません' };
+  }
+  
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const sheet = ss.getSheetByName('Reservation_DB');
+  const data = sheet.getDataRange().getValues();
+  
+  let count = 0;
+  const errors = [];
+  
+  for (let i = 1; i < data.length; i++) {
+    if (data[i][6] === 'pending') {
+      try {
+        const reservationId = data[i][0];
+        const dateStr = data[i][2];
+        let timeStr = data[i][5];
+        
+        let hour, minute;
+        if (timeStr instanceof Date) {
+          hour = timeStr.getHours();
+          minute = timeStr.getMinutes();
+          timeStr = String(hour).padStart(2, '0') + ':' + String(minute).padStart(2, '0');
+        } else {
+          const timeParts = String(timeStr).split(':');
+          hour = parseInt(timeParts[0]);
+          minute = parseInt(timeParts[1]);
+        }
+        
+        const eventDate = new Date(dateStr);
+        eventDate.setHours(hour, minute, 0, 0);
+        const endDate = new Date(eventDate.getTime() + 5 * 60 * 60 * 1000);
+        
+        const title = '【外出】ゴルフ 麻倉 ' + timeStr + ' 残数3';
+        const event = calendar.createEvent(title, eventDate, endDate, {
+          location: '麻倉ゴルフ倶楽部',
+          description: '[System:GolfMgr] ID:' + reservationId
+        });
+        
+        // ステータス更新
+        sheet.getRange(i + 1, 7).setValue('confirmed');
+        sheet.getRange(i + 1, 8).setValue(event.getId());
+        sheet.getRange(i + 1, 9).setValue(new Date());
+        
+        count++;
+        console.log('✅ 承認: ' + reservationId);
+      } catch (e) {
+        errors.push(e.message);
+        console.log('❌ エラー: ' + e.message);
+      }
+    }
+  }
+  
+  console.log('一括承認完了: ' + count + '件');
+  return { success: true, count: count, errors: errors };
 }

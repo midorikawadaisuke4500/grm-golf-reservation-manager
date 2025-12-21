@@ -572,7 +572,12 @@
                     </div>
                     ${pendingReservations.length > 0 ? `
                     <div class="section">
-                        <h3 class="section-title" style="color: var(--accent);">⏳ 承認待ち (${pendingReservations.length}件)</h3>
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: var(--space-md);">
+                            <h3 class="section-title" style="color: var(--accent); margin: 0;">⏳ 承認待ち (${pendingReservations.length}件)</h3>
+                            <button class="btn btn-primary" onclick="App.approveAll()" style="font-size: var(--font-size-sm); padding: var(--space-xs) var(--space-md);">
+                                ✅ 一括承認
+                            </button>
+                        </div>
                         ${pendingReservations.map(r => this.renderReservationCard(r, 'pending')).join('')}
                     </div>` : ''}
                     ${confirmedReservations.length > 0 ? `
@@ -590,8 +595,24 @@
                 const badgeClass = status === 'pending' ? 'badge-pending' : 'badge-confirmed';
                 const badgeText = status === 'pending' ? '承認待ち' : '確定済み';
 
+                // 時刻フォーマット
+                let timeDisplay = '--:--';
+                if (reservation.time) {
+                    if (typeof reservation.time === 'string') {
+                        timeDisplay = reservation.time;
+                    } else if (reservation.time instanceof Date || reservation.time.getHours) {
+                        const t = new Date(reservation.time);
+                        timeDisplay = String(t.getHours()).padStart(2, '0') + ':' + String(t.getMinutes()).padStart(2, '0');
+                    }
+                }
+
+                const approveButton = status === 'pending' ? `
+                    <button class="btn" onclick="App.approveOne('${reservation.id}')" style="font-size: var(--font-size-xs); padding: var(--space-xs) var(--space-sm); margin-top: var(--space-sm);">
+                        ✅ 承認
+                    </button>` : '';
+
                 return `
-                <div class="card reservation-card">
+                <div class="card reservation-card" data-id="${reservation.id}">
                     <div style="display: flex; justify-content: space-between; align-items: flex-start;">
                         <div class="reservation-date">
                             <span class="reservation-day">${day}</span>
@@ -605,7 +626,7 @@
                                 <circle cx="12" cy="12" r="10"></circle>
                                 <polyline points="12 6 12 12 16 14"></polyline>
                             </svg>
-                            <span>${reservation.time || '--:--'}</span>
+                            <span>${timeDisplay}</span>
                         </div>
                         <div class="reservation-info-item">
                             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -615,6 +636,7 @@
                             <span>${reservation.course || 'OUT'}コース</span>
                         </div>
                     </div>
+                    ${approveButton}
                 </div>`;
             },
 
@@ -683,6 +705,54 @@
 
             async testNotification() {
                 alert('LINE通知テストはGASエディタから実行してください');
+            },
+
+            async approveOne(reservationId) {
+                if (!confirm('この予約をカレンダーに登録しますか？')) return;
+
+                try {
+                    const baseUrl = '<?= ScriptApp.getService().getUrl() ?>';
+                    const response = await fetch(baseUrl + '?action=approveReservation&id=' + reservationId);
+                    const result = await response.json();
+
+                    if (result.success) {
+                        alert('✅ カレンダーに登録しました');
+                        await this.loadData();
+                        this.renderView('calendar');
+                    } else {
+                        alert('❌ 登録に失敗しました: ' + (result.error || ''));
+                    }
+                } catch (e) {
+                    console.error('Failed to approve:', e);
+                    alert('❌ エラーが発生しました');
+                }
+            },
+
+            async approveAll() {
+                const pending = this.reservations.filter(r => r.status === 'pending');
+                if (pending.length === 0) {
+                    alert('承認待ちの予約がありません');
+                    return;
+                }
+
+                if (!confirm(pending.length + '件の予約を一括でカレンダーに登録しますか？')) return;
+
+                try {
+                    const baseUrl = '<?= ScriptApp.getService().getUrl() ?>';
+                    const response = await fetch(baseUrl + '?action=approveAllReservations');
+                    const result = await response.json();
+
+                    if (result.success) {
+                        alert('✅ ' + result.count + '件をカレンダーに登録しました');
+                        await this.loadData();
+                        this.renderView('calendar');
+                    } else {
+                        alert('❌ 登録に失敗しました: ' + (result.error || ''));
+                    }
+                } catch (e) {
+                    console.error('Failed to approve all:', e);
+                    alert('❌ エラーが発生しました');
+                }
             }
         };
 
