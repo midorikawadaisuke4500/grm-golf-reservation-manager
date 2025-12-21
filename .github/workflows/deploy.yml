@@ -22,10 +22,14 @@ jobs:
     - name: Create .clasprc.json
       run: |
         echo "${{ secrets.CLASPRC_BASE64 }}" | base64 -d > ~/.clasprc.json
+        echo "File created, checking structure..."
+        cat ~/.clasprc.json | head -c 100
+        echo "..."
     
     - name: Create .clasp.json
       run: |
         echo '{"scriptId":"${{ secrets.SCRIPT_ID }}","rootDir":"."}' > .clasp.json
+        cat .clasp.json
     
     - name: Deploy to GAS
       run: clasp push --force
