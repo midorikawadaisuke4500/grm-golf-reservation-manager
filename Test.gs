@@ -28,7 +28,7 @@ function testStep1_SendRequestMail() {
   console.log('========================================');
   
   try {
-    const result = sendReservationRequest();
+    const result = GRMMail.sendReservationRequest();
     console.log('✅ メール送信完了');
     console.log('ThreadID: ' + result.threadId);
     console.log('');
