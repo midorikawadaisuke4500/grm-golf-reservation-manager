@@ -20,10 +20,8 @@ jobs:
       run: npm install -g @google/clasp
     
     - name: Create .clasprc.json
-      env:
-        CLASPRC_JSON: ${{ secrets.CLASPRC_JSON }}
       run: |
-        echo "$CLASPRC_JSON" > ~/.clasprc.json
+        echo "${{ secrets.CLASPRC_BASE64 }}" | base64 -d > ~/.clasprc.json
     
     - name: Create .clasp.json
       run: |
