@@ -962,22 +962,26 @@ function test03_ParseReply() {
     (reservations.length > 5 ? `\n...他${reservations.length - 5}件` : '') +
     `\n\n下のボタンまたは「登録」と返信してください`;
   
-  try {
-    const messages = [{
-      type: 'text',
-      text: notificationText,
-      quickReply: {
-        items: [
-          { type: 'action', action: { type: 'message', label: '✅ 登録する', text: '登録' } },
-          { type: 'action', action: { type: 'message', label: '❌ キャンセル', text: 'キャンセル' } },
-          { type: 'action', action: { type: 'message', label: '📊 ステータス', text: 'ステータス' } }
-        ]
-      }
-    }];
-    LINE.notifyAdmin(messages);
-    console.log('✅ LINE通知送信完了');
-  } catch (e) {
-    console.log('⚠️ LINE通知エラー: ' + e.message);
+  if (isLineEnabled()) {
+    try {
+      const messages = [{
+        type: 'text',
+        text: notificationText,
+        quickReply: {
+          items: [
+            { type: 'action', action: { type: 'message', label: '✅ 登録する', text: '登録' } },
+            { type: 'action', action: { type: 'message', label: '❌ キャンセル', text: 'キャンセル' } },
+            { type: 'action', action: { type: 'message', label: '📊 ステータス', text: 'ステータス' } }
+          ]
+        }
+      }];
+      LINE.notifyAdmin(messages);
+      console.log('✅ LINE通知送信完了');
+    } catch (e) {
+      console.log('⚠️ LINE通知エラー: ' + e.message);
+    }
+  } else {
+    console.log('🔕 LINE通知スキップ（Webのみモード）');
   }
   
   // 管理者メールにも同文面を送信
@@ -2110,29 +2114,33 @@ function checkEmailReply() {
   // 監視を停止
   stopEmailMonitoring();
   
-  // LINE通知（クイックリプライ付き）
-  var notificationText = 
-    '【自動検出】予約候補を検出しました\n\n' +
-    '【' + targetYear + '年' + targetMonth + '月の予約】\n' +
-    reservations.length + '件の予約が見つかりました\n\n' +
-    reservations.slice(0, 5).map(function(res, i) {
-      return (i + 1) + '. ' + res.date + '（' + res.weekday + '）' + res.time;
-    }).join('\n') +
-    (reservations.length > 5 ? '\n...他' + (reservations.length - 5) + '件' : '') +
-    '\n\n下のボタンまたは「登録」と返信してください';
-  
-  var messages = [{
-    type: 'text',
-    text: notificationText,
-    quickReply: {
-      items: [
-        { type: 'action', action: { type: 'message', label: '登録する', text: '登録' } },
-        { type: 'action', action: { type: 'message', label: 'キャンセル', text: 'キャンセル' } }
-      ]
-    }
-  }];
-  
-  LINE.notifyAdmin(messages);
+  // LINE通知（Webのみモードの場合はスキップ）
+  if (isLineEnabled()) {
+    var notificationText = 
+      '【自動検出】予約候補を検出しました\n\n' +
+      '【' + targetYear + '年' + targetMonth + '月の予約】\n' +
+      reservations.length + '件の予約が見つかりました\n\n' +
+      reservations.slice(0, 5).map(function(res, i) {
+        return (i + 1) + '. ' + res.date + '（' + res.weekday + '）' + res.time;
+      }).join('\n') +
+      (reservations.length > 5 ? '\n...他' + (reservations.length - 5) + '件' : '') +
+      '\n\n下のボタンまたは「登録」と返信してください';
+    
+    var messages = [{
+      type: 'text',
+      text: notificationText,
+      quickReply: {
+        items: [
+          { type: 'action', action: { type: 'message', label: '登録する', text: '登録' } },
+          { type: 'action', action: { type: 'message', label: 'キャンセル', text: 'キャンセル' } }
+        ]
+      }
+    }];
+    
+    LINE.notifyAdmin(messages);
+  } else {
+    console.log('🔕 LINE通知スキップ（Webのみモード）');
+  }
   
   // 管理者メール通知
   var adminEmail = Config.get('ADMIN_EMAIL');
