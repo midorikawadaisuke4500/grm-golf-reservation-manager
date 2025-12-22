@@ -377,6 +377,42 @@
                 opacity: 1;
             }
         }
+
+        /* スケルトンローディング */
+        @keyframes skeleton-pulse {
+
+            0%,
+            100% {
+                opacity: 0.4;
+            }
+
+            50% {
+                opacity: 0.8;
+            }
+        }
+
+        .skeleton-header {
+            height: 80px;
+            background: linear-gradient(90deg, var(--bg-tertiary) 0%, var(--bg-card) 50%, var(--bg-tertiary) 100%);
+            border-radius: var(--radius-lg);
+            margin-bottom: var(--space-lg);
+            animation: skeleton-pulse 1.5s ease-in-out infinite;
+        }
+
+        .skeleton-card {
+            height: 100px;
+            background: linear-gradient(90deg, var(--bg-tertiary) 0%, var(--bg-card) 50%, var(--bg-tertiary) 100%);
+            border-radius: var(--radius-lg);
+            animation: skeleton-pulse 1.5s ease-in-out infinite;
+        }
+
+        .skeleton-section {
+            height: 120px;
+            background: linear-gradient(90deg, var(--bg-tertiary) 0%, var(--bg-card) 50%, var(--bg-tertiary) 100%);
+            border-radius: var(--radius-lg);
+            margin-top: var(--space-lg);
+            animation: skeleton-pulse 1.5s ease-in-out infinite;
+        }
     </style>
 </head>
 
@@ -417,19 +453,74 @@
     </div>
     <script>
         // ============================================
-        // GRM - GAS統合版
+        // GRM - GAS統合版 (パフォーマンス最適化版)
         // ============================================
+
+        // キャッシュ管理
+        const Cache = {
+            TTL: 60000, // 60秒キャッシュ
+
+            get(key) {
+                try {
+                    const item = sessionStorage.getItem('grm_' + key);
+                    if (!item) return null;
+                    const { data, timestamp } = JSON.parse(item);
+                    if (Date.now() - timestamp > this.TTL) {
+                        sessionStorage.removeItem('grm_' + key);
+                        return null;
+                    }
+                    return data;
+                } catch (e) {
+                    return null;
+                }
+            },
+
+            set(key, data) {
+                try {
+                    sessionStorage.setItem('grm_' + key, JSON.stringify({
+                        data,
+                        timestamp: Date.now()
+                    }));
+                } catch (e) {
+                    console.warn('Cache write failed:', e);
+                }
+            },
+
+            clear() {
+                ['stats', 'reservations', 'settings'].forEach(key => {
+                    sessionStorage.removeItem('grm_' + key);
+                });
+            }
+        };
+
         const App = {
             currentView: 'dashboard',
             stats: null,
             reservations: [],
             notificationMode: 'hybrid',
+            isLoading: false,
 
             async init() {
                 this.setupNavigation();
-                await this.loadData();
+
+                // キャッシュからまず表示（体感速度UP）
+                const cachedStats = Cache.get('stats');
+                const cachedReservations = Cache.get('reservations');
+
+                if (cachedStats && cachedReservations) {
+                    this.stats = cachedStats;
+                    this.reservations = cachedReservations;
+                    this.navigate('dashboard');
+                    // バックグラウンドで最新データを取得
+                    this.loadDataBackground();
+                } else {
+                    // キャッシュがない場合はスケルトン表示
+                    this.showSkeleton();
+                    await this.loadData();
+                    this.navigate('dashboard');
+                }
+
                 await this.loadSettings();
-                this.navigate('dashboard');
             },
 
             setupNavigation() {
@@ -441,24 +532,89 @@
                 });
             },
 
+            showSkeleton() {
+                const content = document.getElementById('mainContent');
+                content.innerHTML = `
+                <div class="animate-fade-in">
+                    <div class="skeleton-header"></div>
+                    <div class="stats-grid">
+                        <div class="skeleton-card"></div>
+                        <div class="skeleton-card"></div>
+                        <div class="skeleton-card"></div>
+                        <div class="skeleton-card"></div>
+                    </div>
+                    <div class="skeleton-section"></div>
+                </div>`;
+            },
+
             async loadData() {
+                this.isLoading = true;
                 try {
                     const baseUrl = '<?= ScriptApp.getService().getUrl() ?>';
                     console.log('API Base URL:', baseUrl);
-                    const [statsRes, reservationsRes] = await Promise.all([
+
+                    // Promise.allSettled で一部失敗しても他のデータを取得
+                    const results = await Promise.allSettled([
                         fetch(baseUrl + '?action=getStats'),
                         fetch(baseUrl + '?action=getReservations')
                     ]);
-                    this.stats = await statsRes.json();
-                    this.reservations = await reservationsRes.json();
+
+                    if (results[0].status === 'fulfilled') {
+                        this.stats = await results[0].value.json();
+                        Cache.set('stats', this.stats);
+                    }
+
+                    if (results[1].status === 'fulfilled') {
+                        this.reservations = await results[1].value.json();
+                        if (!Array.isArray(this.reservations)) this.reservations = [];
+                        Cache.set('reservations', this.reservations);
+                    }
+
                     console.log('Stats:', this.stats);
-                    console.log('Reservations:', this.reservations);
-                    console.log('Reservations count:', this.reservations ? this.reservations.length : 0);
-                    if (!Array.isArray(this.reservations)) this.reservations = [];
+                    console.log('Reservations:', this.reservations?.length || 0);
                 } catch (e) {
                     console.error('Failed to load data:', e);
                     this.stats = { upcoming: 0, confirmed: 0, pending: 0, needsReminder: 0 };
                     this.reservations = [];
+                }
+                this.isLoading = false;
+            },
+
+            // バックグラウンドでデータ更新
+            async loadDataBackground() {
+                try {
+                    const baseUrl = '<?= ScriptApp.getService().getUrl() ?>';
+                    const results = await Promise.allSettled([
+                        fetch(baseUrl + '?action=getStats'),
+                        fetch(baseUrl + '?action=getReservations')
+                    ]);
+
+                    let needsUpdate = false;
+
+                    if (results[0].status === 'fulfilled') {
+                        const newStats = await results[0].value.json();
+                        if (JSON.stringify(newStats) !== JSON.stringify(this.stats)) {
+                            this.stats = newStats;
+                            Cache.set('stats', newStats);
+                            needsUpdate = true;
+                        }
+                    }
+
+                    if (results[1].status === 'fulfilled') {
+                        const newReservations = await results[1].value.json();
+                        if (Array.isArray(newReservations) &&
+                            JSON.stringify(newReservations) !== JSON.stringify(this.reservations)) {
+                            this.reservations = newReservations;
+                            Cache.set('reservations', newReservations);
+                            needsUpdate = true;
+                        }
+                    }
+
+                    if (needsUpdate) {
+                        this.renderView(this.currentView);
+                    }
+                } catch (e) {
+                    console.error('Background update failed:', e);
                 }
             },
 
