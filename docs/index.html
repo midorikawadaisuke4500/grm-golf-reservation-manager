@@ -511,8 +511,8 @@
                     this.stats = cachedStats;
                     this.reservations = cachedReservations;
                     this.navigate('dashboard');
-                    // バックグラウンドで最新データを取得
-                    this.loadDataBackground();
+                    // バックグラウンド更新は30秒後に遅延（ユーザー操作を妨げない）
+                    setTimeout(() => this.loadDataBackground(), 30000);
                 } else {
                     // キャッシュがない場合はスケルトン表示
                     this.showSkeleton();
