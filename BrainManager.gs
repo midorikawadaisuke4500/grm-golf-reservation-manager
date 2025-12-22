@@ -186,13 +186,37 @@ const BrainManager = {
     
     for (let i = 1; i < data.length; i++) {
       const row = data[i];
+      
+      // 日付のフォーマット
+      let dateStr = '';
+      const dateValue = row[2];
+      if (dateValue instanceof Date) {
+        const year = dateValue.getFullYear();
+        const month = String(dateValue.getMonth() + 1).padStart(2, '0');
+        const day = String(dateValue.getDate()).padStart(2, '0');
+        dateStr = year + '-' + month + '-' + day;
+      } else if (dateValue) {
+        dateStr = String(dateValue);
+      }
+      
+      // 時刻のフォーマット
+      let timeStr = '';
+      const timeValue = row[5];
+      if (timeValue instanceof Date) {
+        const hour = String(timeValue.getHours()).padStart(2, '0');
+        const minute = String(timeValue.getMinutes()).padStart(2, '0');
+        timeStr = hour + ':' + minute;
+      } else if (timeValue) {
+        timeStr = String(timeValue);
+      }
+      
       reservations.push({
         id: row[0],
         emailReceivedDate: row[1],
-        date: row[2],
+        date: dateStr,
         weekday: row[3],
         course: row[4],
-        time: row[5],
+        time: timeStr,
         status: row[6],
         calendarEventId: row[7],
         updatedAt: row[8],
