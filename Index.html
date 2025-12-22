@@ -551,29 +551,34 @@
                 this.isLoading = true;
                 try {
                     const baseUrl = '<?= ScriptApp.getService().getUrl() ?>';
-                    console.log('API Base URL:', baseUrl);
+                    console.log('🚀 統合API呼び出し:', baseUrl);
 
-                    // Promise.allSettled で一部失敗しても他のデータを取得
-                    const results = await Promise.allSettled([
-                        fetch(baseUrl + '?action=getStats'),
-                        fetch(baseUrl + '?action=getReservations')
-                    ]);
+                    // 統合API: 1回の呼び出しで全データ取得
+                    const response = await fetch(baseUrl + '?action=getInitialData');
+                    const data = await response.json();
 
-                    if (results[0].status === 'fulfilled') {
-                        this.stats = await results[0].value.json();
+                    if (data.stats) {
+                        this.stats = data.stats;
                         Cache.set('stats', this.stats);
                     }
 
-                    if (results[1].status === 'fulfilled') {
-                        this.reservations = await results[1].value.json();
+                    if (data.reservations) {
+                        this.reservations = data.reservations;
                         if (!Array.isArray(this.reservations)) this.reservations = [];
                         Cache.set('reservations', this.reservations);
                     }
 
-                    console.log('Stats:', this.stats);
-                    console.log('Reservations:', this.reservations?.length || 0);
+                    if (data.settings) {
+                        this.notificationMode = data.settings.mode || 'hybrid';
+                    }
+
+                    console.log('✅ データ取得完了:', {
+                        stats: this.stats,
+                        reservations: this.reservations?.length || 0,
+                        timestamp: data.timestamp
+                    });
                 } catch (e) {
-                    console.error('Failed to load data:', e);
+                    console.error('❌ Failed to load data:', e);
                     this.stats = { upcoming: 0, confirmed: 0, pending: 0, needsReminder: 0 };
                     this.reservations = [];
                 }
@@ -584,33 +589,26 @@
             async loadDataBackground() {
                 try {
                     const baseUrl = '<?= ScriptApp.getService().getUrl() ?>';
-                    const results = await Promise.allSettled([
-                        fetch(baseUrl + '?action=getStats'),
-                        fetch(baseUrl + '?action=getReservations')
-                    ]);
+                    const response = await fetch(baseUrl + '?action=getInitialData');
+                    const data = await response.json();
 
                     let needsUpdate = false;
 
-                    if (results[0].status === 'fulfilled') {
-                        const newStats = await results[0].value.json();
-                        if (JSON.stringify(newStats) !== JSON.stringify(this.stats)) {
-                            this.stats = newStats;
-                            Cache.set('stats', newStats);
-                            needsUpdate = true;
-                        }
+                    if (data.stats && JSON.stringify(data.stats) !== JSON.stringify(this.stats)) {
+                        this.stats = data.stats;
+                        Cache.set('stats', data.stats);
+                        needsUpdate = true;
                     }
 
-                    if (results[1].status === 'fulfilled') {
-                        const newReservations = await results[1].value.json();
-                        if (Array.isArray(newReservations) &&
-                            JSON.stringify(newReservations) !== JSON.stringify(this.reservations)) {
-                            this.reservations = newReservations;
-                            Cache.set('reservations', newReservations);
-                            needsUpdate = true;
-                        }
+                    if (data.reservations && Array.isArray(data.reservations) &&
+                        JSON.stringify(data.reservations) !== JSON.stringify(this.reservations)) {
+                        this.reservations = data.reservations;
+                        Cache.set('reservations', data.reservations);
+                        needsUpdate = true;
                     }
 
                     if (needsUpdate) {
+                        console.log('🔄 バックグラウンド更新 - UIを再描画');
                         this.renderView(this.currentView);
                     }
                 } catch (e) {

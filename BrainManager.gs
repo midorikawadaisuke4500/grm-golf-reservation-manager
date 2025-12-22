@@ -59,11 +59,19 @@ function handleGetRequest(action, params) {
           mode: isLineEnabled() ? 'hybrid' : 'web'
         };
         break;
+      case 'getInitialData':
+        // 統合API: 1回の呼び出しで全データを取得（高速化）
+        result = getInitialDataCached();
+        break;
       case 'approveReservation':
         result = approveReservationToCalendar(params.id);
+        // 承認後はキャッシュをクリア
+        clearDataCache();
         break;
       case 'approveAllReservations':
         result = approveAllReservationsToCalendar();
+        // 承認後はキャッシュをクリア
+        clearDataCache();
         break;
       default:
         result = { error: 'Unknown action: ' + action };
@@ -166,6 +174,62 @@ function doPost(e) {
     return ContentService.createTextOutput(JSON.stringify({ error: e.message }))
       .setMimeType(ContentService.MimeType.JSON);
   }
+}
+
+// ========================================
+// キャッシュ機能（高速化）
+// ========================================
+
+const CACHE_TTL = 60; // 60秒キャッシュ
+
+/**
+ * 統合API: キャッシュ付きで全初期データを取得
+ */
+function getInitialDataCached() {
+  const cache = CacheService.getScriptCache();
+  const cacheKey = 'initialData';
+  
+  // キャッシュを確認
+  const cached = cache.get(cacheKey);
+  if (cached) {
+    console.log('📦 キャッシュからデータを返却');
+    return JSON.parse(cached);
+  }
+  
+  console.log('🔄 スプレッドシートからデータを取得');
+  
+  // データを取得
+  const stats = BrainManager.getStats();
+  const reservations = BrainManager.getReservations();
+  const settings = {
+    lineEnabled: isLineEnabled(),
+    mode: isLineEnabled() ? 'hybrid' : 'web'
+  };
+  
+  const result = {
+    stats: stats,
+    reservations: reservations,
+    settings: settings,
+    timestamp: new Date().toISOString()
+  };
+  
+  // キャッシュに保存（60秒）
+  try {
+    cache.put(cacheKey, JSON.stringify(result), CACHE_TTL);
+  } catch (e) {
+    console.log('キャッシュ書き込みエラー:', e.message);
+  }
+  
+  return result;
+}
+
+/**
+ * データキャッシュをクリア
+ */
+function clearDataCache() {
+  const cache = CacheService.getScriptCache();
+  cache.remove('initialData');
+  console.log('🗑️ キャッシュをクリア');
 }
 
 /**
