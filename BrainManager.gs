@@ -2799,3 +2799,118 @@ function approveAllReservationsToCalendar() {
   console.log('一括承認完了: ' + count + '件');
   return { success: true, count: count, errors: errors };
 }
+
+// ========================================
+// ★★★ データ修復関数 ★★★
+// ========================================
+
+/**
+ * ★★★ 2001年の日付を2026年に修正 ★★★
+ * GASエディタで実行
+ */
+function fixReservationDates() {
+  console.log('========================================');
+  console.log('  予約データ日付修正');
+  console.log('========================================');
+  console.log('');
+  
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const sheet = ss.getSheetByName('Reservation_DB');
+  
+  if (!sheet) {
+    console.log('❌ Reservation_DBシートが見つかりません');
+    return;
+  }
+  
+  const data = sheet.getDataRange().getValues();
+  let fixedCount = 0;
+  
+  for (let i = 1; i < data.length; i++) {
+    const dateValue = data[i][2]; // C列（予約日）
+    const currentId = data[i][0]; // A列（ID）
+    
+    // 日付が2001年の場合、2026年に修正
+    let needsFix = false;
+    let newDate;
+    
+    if (dateValue instanceof Date) {
+      const year = dateValue.getFullYear();
+      if (year === 2001 || year < 2020) {
+        // 2026年に修正
+        newDate = new Date(2026, dateValue.getMonth(), dateValue.getDate());
+        needsFix = true;
+      }
+    } else if (typeof dateValue === 'string') {
+      if (dateValue.includes('2001') || dateValue.includes('2001')) {
+        newDate = dateValue.replace('2001', '2026');
+        needsFix = true;
+      }
+    }
+    
+    if (needsFix) {
+      // 日付を更新
+      sheet.getRange(i + 1, 3).setValue(newDate);
+      
+      // IDも修正（res-undefin → res-2026-05）
+      if (currentId && String(currentId).includes('undefin')) {
+        const month = newDate instanceof Date 
+          ? String(newDate.getMonth() + 1).padStart(2, '0')
+          : '05';
+        const newId = 'res-2026-' + month + '-' + String(i).padStart(3, '0');
+        sheet.getRange(i + 1, 1).setValue(newId);
+        console.log('修正: ' + currentId + ' → ' + newId + ' / 日付:' + newDate);
+      } else {
+        console.log('日付修正: ID=' + currentId + ' / 新日付:' + newDate);
+      }
+      
+      fixedCount++;
+    }
+  }
+  
+  console.log('');
+  console.log('========================================');
+  console.log('✅ ' + fixedCount + '件のデータを修正しました');
+  console.log('========================================');
+  
+  return { success: true, fixed: fixedCount };
+}
+
+/**
+ * ★★★ 不正なカレンダーイベントを削除 ★★★
+ * GASエディタで実行
+ */
+function deleteInvalidCalendarEvents() {
+  console.log('========================================');
+  console.log('  不正なカレンダーイベント削除');
+  console.log('========================================');
+  
+  const calendarId = Config.get('CALENDAR_ID');
+  const calendar = CalendarApp.getCalendarById(calendarId);
+  
+  if (!calendar) {
+    console.log('❌ カレンダーが見つかりません');
+    return;
+  }
+  
+  // 1899年～2020年の範囲で検索（不正なイベント）
+  const startSearch = new Date('1899-01-01');
+  const endSearch = new Date('2024-12-31');
+  const events = calendar.getEvents(startSearch, endSearch, {search: 'ゴルフ'});
+  
+  let deleteCount = 0;
+  
+  events.forEach(event => {
+    const title = event.getTitle();
+    if (title.includes('ゴルフ') || title.includes('外出')) {
+      console.log('削除: ' + event.getStartTime() + ' - ' + title);
+      event.deleteEvent();
+      deleteCount++;
+    }
+  });
+  
+  console.log('');
+  console.log('✅ ' + deleteCount + '件のイベントを削除しました');
+  console.log('========================================');
+  
+  return { success: true, deleted: deleteCount };
+}
