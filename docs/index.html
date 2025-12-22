@@ -902,11 +902,10 @@
                     return;
                 }
 
-                const result = window.confirm('この予約をカレンダーに登録しますか？\nID: ' + reservationId);
-                if (!result) {
-                    console.log('User cancelled');
-                    return;
-                }
+                // ボタンを無効化して二重クリック防止
+                const button = event.target;
+                button.disabled = true;
+                button.textContent = '処理中...';
 
                 try {
                     const baseUrl = 'https://script.google.com/macros/s/AKfycbwk35HLUGvwIlP_W0AtBH3wbDbYw_YpC7JVtTdRnLWI62r2raz6HdMUNyMxD5uFlQ8/exec';
@@ -917,14 +916,20 @@
 
                     if (apiResult.success) {
                         alert('✅ カレンダーに登録しました');
+                        // キャッシュをクリアして再読み込み
+                        Cache.clear();
                         await this.loadData();
                         this.renderView('calendar');
                     } else {
                         alert('❌ 登録に失敗しました: ' + (apiResult.error || ''));
+                        button.disabled = false;
+                        button.textContent = '✅ 承認';
                     }
                 } catch (e) {
                     console.error('Failed to approve:', e);
                     alert('❌ エラーが発生しました: ' + e.message);
+                    button.disabled = false;
+                    button.textContent = '✅ 承認';
                 }
             },
 
