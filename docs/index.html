@@ -636,19 +636,25 @@
                 this.renderView(viewName);
             },
 
-            renderView(viewName) {
+            renderView(viewName, skipAnimation = false) {
                 const content = document.getElementById('mainContent');
+                let html;
                 switch (viewName) {
                     case 'dashboard':
-                        content.innerHTML = this.renderDashboard();
+                        html = this.renderDashboard();
                         break;
                     case 'calendar':
-                        content.innerHTML = this.renderCalendar();
+                        html = this.renderCalendar();
                         break;
                     case 'settings':
-                        content.innerHTML = this.renderSettings();
+                        html = this.renderSettings();
                         break;
                 }
+                // アニメーションをスキップする場合はクラスを削除
+                if (skipAnimation) {
+                    html = html.replace('animate-fade-in', '');
+                }
+                content.innerHTML = html;
             },
 
             renderDashboard() {
@@ -919,7 +925,7 @@
                         // キャッシュをクリアして再読み込み
                         Cache.clear();
                         await this.loadData();
-                        this.renderView('calendar');
+                        this.renderView('calendar', true); // アニメーションスキップ
                     } else {
                         alert('❌ 登録に失敗しました: ' + (apiResult.error || ''));
                         button.disabled = false;
@@ -950,7 +956,7 @@
                     if (result.success) {
                         alert('✅ ' + result.count + '件をカレンダーに登録しました');
                         await this.loadData();
-                        this.renderView('calendar');
+                        this.renderView('calendar', true); // アニメーションスキップ
                     } else {
                         alert('❌ 登録に失敗しました: ' + (result.error || ''));
                     }
