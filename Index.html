@@ -589,8 +589,35 @@
             },
 
             renderReservationCard(reservation, status) {
-                const date = new Date(reservation.date);
-                const day = date.getDate();
+                // 日付の変換
+                let date;
+                let month;
+                let day;
+                const dateValue = reservation.date;
+
+                if (typeof dateValue === 'string') {
+                    // YYYY-MM-DD形式の場合
+                    if (dateValue.match(/^\d{4}-\d{2}-\d{2}/)) {
+                        const parts = dateValue.split('-');
+                        month = parseInt(parts[1]);
+                        day = parseInt(parts[2]);
+                        date = new Date(parseInt(parts[0]), month - 1, day);
+                    } else {
+                        date = new Date(dateValue);
+                        month = date.getMonth() + 1;
+                        day = date.getDate();
+                    }
+                } else if (dateValue && typeof dateValue === 'object') {
+                    // Dateオブジェクトまたはオブジェクト形式
+                    date = new Date(dateValue);
+                    month = date.getMonth() + 1;
+                    day = date.getDate();
+                } else {
+                    date = new Date();
+                    month = date.getMonth() + 1;
+                    day = date.getDate();
+                }
+
                 const weekday = reservation.weekday || ['日', '月', '火', '水', '木', '金', '土'][date.getDay()];
                 const badgeClass = status === 'pending' ? 'badge-pending' : 'badge-confirmed';
                 const badgeText = status === 'pending' ? '承認待ち' : '確定済み';
@@ -615,7 +642,7 @@
                 <div class="card reservation-card" data-id="${reservation.id}">
                     <div style="display: flex; justify-content: space-between; align-items: flex-start;">
                         <div class="reservation-date">
-                            <span class="reservation-day">${day}</span>
+                            <span class="reservation-day">${month}/${day}</span>
                             <span class="reservation-weekday">${weekday}</span>
                         </div>
                         <span class="badge ${badgeClass}">${badgeText}</span>

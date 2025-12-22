@@ -2602,12 +2602,15 @@ function fixOldWebAppUrl() {
  * 個別の予約をカレンダーに登録
  */
 function approveReservationToCalendar(reservationId) {
+  console.log('========================================');
   console.log('承認処理開始: ' + reservationId);
+  console.log('========================================');
   
   const calendarId = Config.get('CALENDAR_ID');
   const calendar = CalendarApp.getCalendarById(calendarId);
   
   if (!calendar) {
+    console.log('❌ カレンダーが見つかりません: ' + calendarId);
     return { success: false, error: 'カレンダーが見つかりません' };
   }
   
@@ -2615,47 +2618,95 @@ function approveReservationToCalendar(reservationId) {
   const sheet = ss.getSheetByName('Reservation_DB');
   const data = sheet.getDataRange().getValues();
   
+  console.log('検索対象ID: ' + reservationId);
+  console.log('データ行数: ' + data.length);
+  
   for (let i = 1; i < data.length; i++) {
-    if (String(data[i][0]) === reservationId && data[i][6] === 'pending') {
+    const rowId = String(data[i][0]);
+    const rowStatus = data[i][6];
+    
+    console.log('行' + i + ': ID=' + rowId + ', Status=' + rowStatus);
+    
+    if (rowId === reservationId && rowStatus === 'pending') {
       try {
-        const dateStr = data[i][2];
-        let timeStr = data[i][5];
+        // 日付の取得と変換
+        let dateValue = data[i][2];
+        let timeValue = data[i][5];
         
-        let hour, minute;
-        if (timeStr instanceof Date) {
-          hour = timeStr.getHours();
-          minute = timeStr.getMinutes();
-          timeStr = String(hour).padStart(2, '0') + ':' + String(minute).padStart(2, '0');
+        console.log('日付生値: ' + dateValue + ' (型: ' + typeof dateValue + ')');
+        console.log('時間生値: ' + timeValue + ' (型: ' + typeof timeValue + ')');
+        
+        // 日付の処理
+        let eventDate;
+        if (dateValue instanceof Date) {
+          // すでにDateオブジェクトの場合
+          eventDate = new Date(dateValue.getTime());
+          console.log('日付はDateオブジェクト: ' + eventDate.toISOString());
         } else {
-          const timeParts = String(timeStr).split(':');
-          hour = parseInt(timeParts[0]);
-          minute = parseInt(timeParts[1]);
+          // 文字列の場合
+          const dateStr = String(dateValue);
+          // YYYY-MM-DD形式かチェック
+          if (dateStr.match(/^\d{4}-\d{2}-\d{2}$/)) {
+            const parts = dateStr.split('-');
+            eventDate = new Date(parseInt(parts[0]), parseInt(parts[1]) - 1, parseInt(parts[2]));
+          } else {
+            eventDate = new Date(dateStr);
+          }
+          console.log('日付を文字列から変換: ' + eventDate.toISOString());
         }
         
-        const eventDate = new Date(dateStr);
+        // 時間の処理
+        let hour, minute;
+        let timeDisplay;
+        if (timeValue instanceof Date) {
+          hour = timeValue.getHours();
+          minute = timeValue.getMinutes();
+          timeDisplay = String(hour).padStart(2, '0') + ':' + String(minute).padStart(2, '0');
+          console.log('時間はDateオブジェクト: ' + timeDisplay);
+        } else {
+          const timeStr = String(timeValue);
+          const timeParts = timeStr.split(':');
+          hour = parseInt(timeParts[0]) || 0;
+          minute = parseInt(timeParts[1]) || 0;
+          timeDisplay = timeStr;
+          console.log('時間を文字列から変換: ' + timeDisplay);
+        }
+        
+        // 時刻を設定
         eventDate.setHours(hour, minute, 0, 0);
         const endDate = new Date(eventDate.getTime() + 5 * 60 * 60 * 1000);
         
-        const title = '【外出】ゴルフ 麻倉 ' + timeStr + ' 残数3';
+        console.log('イベント開始: ' + eventDate.toLocaleString('ja-JP'));
+        console.log('イベント終了: ' + endDate.toLocaleString('ja-JP'));
+        
+        // イベント作成
+        const title = '【外出】ゴルフ 麻倉 ' + timeDisplay + ' 残数3';
         const event = calendar.createEvent(title, eventDate, endDate, {
           location: '麻倉ゴルフ倶楽部',
           description: '[System:GolfMgr] ID:' + reservationId
         });
         
+        const eventId = event.getId();
+        
         // ステータス更新
         sheet.getRange(i + 1, 7).setValue('confirmed');
-        sheet.getRange(i + 1, 8).setValue(event.getId());
+        sheet.getRange(i + 1, 8).setValue(eventId);
         sheet.getRange(i + 1, 9).setValue(new Date());
         
         console.log('✅ 承認完了: ' + reservationId);
-        return { success: true, id: reservationId, eventId: event.getId() };
+        console.log('カレンダーイベントID: ' + eventId);
+        console.log('========================================');
+        
+        return { success: true, id: reservationId, eventId: eventId, date: eventDate.toISOString() };
       } catch (e) {
         console.log('❌ エラー: ' + e.message);
+        console.log('スタック: ' + e.stack);
         return { success: false, error: e.message };
       }
     }
   }
   
+  console.log('❌ 予約が見つかりません: ' + reservationId);
   return { success: false, error: '予約が見つかりません: ' + reservationId };
 }
 
