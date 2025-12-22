@@ -591,6 +591,7 @@
             renderReservationCard(reservation, status) {
                 // 日付の変換
                 let date;
+                let year;
                 let month;
                 let day;
                 const dateValue = reservation.date;
@@ -599,21 +600,25 @@
                     // YYYY-MM-DD形式の場合
                     if (dateValue.match(/^\d{4}-\d{2}-\d{2}/)) {
                         const parts = dateValue.split('-');
+                        year = parseInt(parts[0]);
                         month = parseInt(parts[1]);
                         day = parseInt(parts[2]);
-                        date = new Date(parseInt(parts[0]), month - 1, day);
+                        date = new Date(year, month - 1, day);
                     } else {
                         date = new Date(dateValue);
+                        year = date.getFullYear();
                         month = date.getMonth() + 1;
                         day = date.getDate();
                     }
                 } else if (dateValue && typeof dateValue === 'object') {
                     // Dateオブジェクトまたはオブジェクト形式
                     date = new Date(dateValue);
+                    year = date.getFullYear();
                     month = date.getMonth() + 1;
                     day = date.getDate();
                 } else {
                     date = new Date();
+                    year = date.getFullYear();
                     month = date.getMonth() + 1;
                     day = date.getDate();
                 }
@@ -642,7 +647,7 @@
                 <div class="card reservation-card" data-id="${reservation.id}">
                     <div style="display: flex; justify-content: space-between; align-items: flex-start;">
                         <div class="reservation-date">
-                            <span class="reservation-day">${month}/${day}</span>
+                            <span class="reservation-day">${year}/${month}/${day}</span>
                             <span class="reservation-weekday">${weekday}</span>
                         </div>
                         <span class="badge ${badgeClass}">${badgeText}</span>
