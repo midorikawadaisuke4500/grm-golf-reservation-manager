@@ -232,6 +232,58 @@ function clearDataCache() {
   console.log('🗑️ キャッシュをクリア');
 }
 
+// ========================================
+// ウォームアップ機能（コールドスタート防止）
+// ========================================
+
+/**
+ * GASをウォームアップ（5分ごとに実行）
+ * これによりGASがスリープ状態にならず、常に高速応答
+ */
+function warmup() {
+  console.log('🔥 ウォームアップ実行:', new Date().toISOString());
+  // 軽い処理を実行してGASをアクティブに保つ
+  const cache = CacheService.getScriptCache();
+  cache.put('lastWarmup', new Date().toISOString(), 600);
+}
+
+/**
+ * ★★★ ウォームアップトリガーを設定 ★★★
+ * GASエディタで1回実行
+ */
+function setupWarmupTrigger() {
+  // 既存のウォームアップトリガーを削除
+  const triggers = ScriptApp.getProjectTriggers();
+  triggers.forEach(trigger => {
+    if (trigger.getHandlerFunction() === 'warmup') {
+      ScriptApp.deleteTrigger(trigger);
+    }
+  });
+  
+  // 5分ごとに実行するトリガーを作成
+  ScriptApp.newTrigger('warmup')
+    .timeBased()
+    .everyMinutes(5)
+    .create();
+  
+  console.log('✅ ウォームアップトリガー設定完了（5分間隔）');
+}
+
+/**
+ * ★★★ ウォームアップトリガーを解除 ★★★
+ */
+function removeWarmupTrigger() {
+  const triggers = ScriptApp.getProjectTriggers();
+  let removed = 0;
+  triggers.forEach(trigger => {
+    if (trigger.getHandlerFunction() === 'warmup') {
+      ScriptApp.deleteTrigger(trigger);
+      removed++;
+    }
+  });
+  console.log('🗑️ ウォームアップトリガー削除: ' + removed + '件');
+}
+
 /**
  * メイン制御オブジェクト
  */
