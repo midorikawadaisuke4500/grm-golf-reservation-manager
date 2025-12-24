@@ -644,8 +644,28 @@ function handleMessage(event) {
       
       for (var i = 0; i < reservations.length; i++) {
         var res = reservations[i];
-        var dateParts = res.date.split('-');
-        var id = 'res-' + dateParts[0] + '-' + dateParts[1] + '-' + String(i + 1).padStart(3, '0');
+        
+        // 日付バリデーション - YYYY-MM-DD形式であることを確認
+        var dateStr = res.date;
+        if (!dateStr || typeof dateStr !== 'string' || !dateStr.match(/^\d{4}-\d{2}-\d{2}$/)) {
+          GRMLogger.warn('LINE', '不正な日付形式をスキップ', { date: dateStr });
+          continue;
+        }
+        
+        var dateParts = dateStr.split('-');
+        var year = parseInt(dateParts[0]);
+        var month = dateParts[1];
+        
+        // 2001年などの不正な年を現在年+1に補正
+        var currentYear = new Date().getFullYear();
+        if (year < currentYear || year > currentYear + 2) {
+          year = currentYear + 1;
+          dateStr = year + '-' + dateParts[1] + '-' + dateParts[2];
+          res.date = dateStr;
+          GRMLogger.warn('LINE', '不正な年を補正', { original: dateParts[0], corrected: year });
+        }
+        
+        var id = 'res-' + year + '-' + month + '-' + String(i + 1).padStart(3, '0');
         
         // カレンダー登録
         var eventId = '';

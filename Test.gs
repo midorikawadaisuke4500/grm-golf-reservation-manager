@@ -371,8 +371,19 @@ function testCleanup() {
     
     for (let i = data.length - 1; i >= 1; i--) {
       const id = String(data[i][0]);
+      const dateVal = data[i][2];
       
-      if (id.startsWith('res-2026-') || id.startsWith('test')) {
+      // 削除対象: res-2026-, test, res-undefin-, または2001年の日付
+      let shouldDelete = id.startsWith('res-2026-') || 
+                         id.startsWith('test') || 
+                         id.startsWith('res-undefin');
+      
+      // 2001年の不正な日付データも削除
+      if (dateVal instanceof Date && dateVal.getFullYear() === 2001) {
+        shouldDelete = true;
+      }
+      
+      if (shouldDelete) {
         const eventId = data[i][7];
         
         if (eventId && calendar) {
