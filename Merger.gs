@@ -108,8 +108,14 @@ const Merger = {
         const parentStartMinute = event.getStartTime().getMinutes();
         const parentMinutes = parentStartHour * 60 + parentStartMinute;
         
-        const childTimeParts = childEvent.time.split(':');
-        const childMinutes = parseInt(childTimeParts[0]) * 60 + parseInt(childTimeParts[1] || 0);
+        // childEvent.time が Date型 または 文字列型に対応
+        let childMinutes = 0;
+        if (childEvent.time instanceof Date) {
+          childMinutes = childEvent.time.getHours() * 60 + childEvent.time.getMinutes();
+        } else if (typeof childEvent.time === 'string') {
+          const childTimeParts = childEvent.time.split(':');
+          childMinutes = parseInt(childTimeParts[0]) * 60 + parseInt(childTimeParts[1] || 0);
+        }
         
         const timeDiff = Math.abs(parentMinutes - childMinutes);
         
