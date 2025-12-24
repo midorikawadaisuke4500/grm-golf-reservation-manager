@@ -548,12 +548,12 @@ function test_Help() {
 // ========================================
 
 /**
- * マージテスト: 親候補検出
+ * マージテスト Step1: 親候補検出
  * 手動でカレンダーに親イベントを登録してから実行
  */
-function test_Merge_Detect() {
+function test_Merge_Step1_Detect() {
   console.log('========================================');
-  console.log('  マージテスト: 親候補検出');
+  console.log('  マージテスト Step1: 親候補検出');
   console.log('========================================');
   
   // テスト用の子イベント情報
@@ -597,12 +597,12 @@ function test_Merge_Detect() {
 }
 
 /**
- * マージテスト: 実際にマージ実行
- * 先に test_Merge_Detect で候補を確認してから実行
+ * マージテスト Step2: 実際にマージ実行
+ * 先に test_Merge_Step1_Detect で候補を確認してから実行
  */
-function test_Merge_Execute() {
+function test_Merge_Step2_Execute() {
   console.log('========================================');
-  console.log('  マージテスト: マージ実行');
+  console.log('  マージテスト Step2: マージ実行');
   console.log('========================================');
   
   // 最新の登録済み予約を取得
@@ -683,12 +683,12 @@ function test_Merge_Execute() {
 }
 
 /**
- * マージテスト: 複数候補から選択してマージ
+ * マージテスト Step3: 複数候補から選択してマージ
  * @param {number} candidateIndex - 候補番号（1始まり）
  */
-function test_Merge_Select(candidateIndex) {
+function test_Merge_Step3_Select(candidateIndex) {
   console.log('========================================');
-  console.log('  マージテスト: 候補選択');
+  console.log('  マージテスト Step3: 候補選択');
   console.log('========================================');
   
   const props = PropertiesService.getScriptProperties();
@@ -696,7 +696,7 @@ function test_Merge_Select(candidateIndex) {
   
   if (!savedData) {
     console.log('❌ 候補データがありません');
-    console.log('先に test_Merge_Execute を実行してください');
+    console.log('先に test_Merge_Step2_Execute を実行してください');
     return null;
   }
   

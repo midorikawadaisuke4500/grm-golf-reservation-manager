@@ -31,7 +31,7 @@ const Merger = {
     GRMLogger.info('Stage6', '親候補検出開始', { date });
     
     // マージ設定を取得
-    const mergeEnabled = Config.get('MERGE_ENABLED') === 'true';
+    const mergeEnabled = String(Config.get('MERGE_ENABLED')).toLowerCase() === 'true';
     if (!mergeEnabled) {
       GRMLogger.info('Stage6', 'マージ機能無効');
       return [];
