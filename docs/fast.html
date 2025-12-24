@@ -343,10 +343,10 @@
                                 <p style="margin-top:4px;font-size:0.75rem;">現在: ${mode === 'web_only' ? 'Webのみ' : 'LINE + Web'}</p>
                             </div>
                             <div style="display:flex;gap:8px;">
-                                <button class="btn" style="flex:1;${mode === 'web_only' ? 'opacity:0.5;' : ''}" onclick="setNotificationMode('web_only')">
+                                <button class="btn" style="flex:1;${mode !== 'web_only' ? 'opacity:0.5;' : ''}" onclick="setNotificationMode('web_only')">
                                     📱 Webのみ
                                 </button>
-                                <button class="btn" style="flex:1;${mode === 'hybrid' ? 'opacity:0.5;' : ''}" onclick="setNotificationMode('hybrid')">
+                                <button class="btn" style="flex:1;${mode !== 'hybrid' ? 'opacity:0.5;' : ''}" onclick="setNotificationMode('hybrid')">
                                     🔔 LINE+Web
                                 </button>
                             </div>
