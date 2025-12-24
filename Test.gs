@@ -134,15 +134,45 @@ function testStep3b_RegisterToDB() {
   }
   
   const registeredIds = [];
+  const currentYear = new Date().getFullYear();
   
   reservations.forEach(function(res, i) {
-    const id = 'res-' + res.date.replace(/-/g, '-').substring(0, 7) + '-' + String(i + 1).padStart(3, '0');
+    // 日付バリデーションと補正
+    let dateStr = res.date;
+    
+    // undefinedまたは不正な形式のチェック
+    if (!dateStr || typeof dateStr !== 'string' || !dateStr.match(/^\d{4}-\d{2}-\d{2}$/)) {
+      console.log('⚠️ 不正な日付形式をスキップ: ' + dateStr);
+      return; // この予約をスキップ
+    }
+    
+    // 日付から年月日を抽出
+    const dateParts = dateStr.split('-');
+    let year = parseInt(dateParts[0]);
+    const month = dateParts[1];
+    const day = dateParts[2];
+    
+    // 2001年などの不正な年を補正（現在年または翌年に）
+    if (year < currentYear || year > currentYear + 2) {
+      const parsedMonth = parseInt(month);
+      const currentMonth = new Date().getMonth() + 1;
+      // 予約月が現在月より先なら今年、そうでなければ翌年
+      if (parsedMonth > currentMonth) {
+        year = currentYear;
+      } else {
+        year = currentYear + 1;
+      }
+      dateStr = year + '-' + month + '-' + day;
+      console.log('✅ 年を補正: ' + res.date + ' → ' + dateStr);
+    }
+    
+    const id = 'res-' + year + '-' + month + '-' + String(i + 1).padStart(3, '0');
     const now = new Date();
     
     sheet.appendRow([
       id,
       now,
-      new Date(res.date),
+      new Date(dateStr),
       res.weekday,
       res.course,
       res.time,
@@ -153,7 +183,7 @@ function testStep3b_RegisterToDB() {
     ]);
     
     registeredIds.push(id);
-    console.log('✅ 登録: ' + id + ' - ' + res.date + '（' + res.weekday + '）' + res.time);
+    console.log('✅ 登録: ' + id + ' - ' + dateStr + '（' + res.weekday + '）' + res.time);
   });
   
   // 登録済みIDを保存
