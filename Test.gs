@@ -544,20 +544,251 @@ function test_Help() {
 }
 
 // ========================================
-// マージテスト（後から追加予定）
+// マージテスト
 // ========================================
-function test_Merge_Setup() {
-  console.log('マージテスト: 準備（未実装）');
-}
 
+/**
+ * マージテスト: 親候補検出
+ * 手動でカレンダーに親イベントを登録してから実行
+ */
 function test_Merge_Detect() {
-  console.log('マージテスト: 検出（未実装）');
+  console.log('========================================');
+  console.log('  マージテスト: 親候補検出');
+  console.log('========================================');
+  
+  // テスト用の子イベント情報
+  const testDate = '2026-05-16';  // テスト日付
+  const testChildEvent = {
+    id: 'test-child',
+    date: testDate,
+    time: '07:30'
+  };
+  
+  console.log('');
+  console.log('📅 検索対象日: ' + testDate);
+  console.log('⏰ 子イベント時間: ' + testChildEvent.time);
+  console.log('');
+  
+  // 親候補を検出
+  const candidates = Merger.findParentCandidates(testDate, testChildEvent);
+  
+  console.log('🔍 検出結果: ' + candidates.length + '件');
+  console.log('');
+  
+  if (candidates.length === 0) {
+    console.log('⚠️ 親候補が見つかりませんでした');
+    console.log('');
+    console.log('【確認事項】');
+    console.log('  1. ' + testDate + ' にカレンダーイベントがありますか？');
+    console.log('  2. タイトルに「ゴルフ」「麻倉」を含んでいますか？');
+    console.log('  3. 場所が「麻倉ゴルフ倶楽部」に設定されていますか？');
+  } else {
+    candidates.forEach((c, i) => {
+      console.log('【候補 ' + (i + 1) + '】');
+      console.log('  タイトル: ' + c.title);
+      console.log('  スコア: ' + c.score + '点');
+      console.log('  一致条件: ' + c.matchedConditions.join(', '));
+      console.log('');
+    });
+  }
+  
+  console.log('========================================');
+  return candidates;
 }
 
+/**
+ * マージテスト: 実際にマージ実行
+ * 先に test_Merge_Detect で候補を確認してから実行
+ */
 function test_Merge_Execute() {
-  console.log('マージテスト: 実行（未実装）');
+  console.log('========================================');
+  console.log('  マージテスト: マージ実行');
+  console.log('========================================');
+  
+  // 最新の登録済み予約を取得
+  const props = PropertiesService.getScriptProperties();
+  const registeredIds = props.getProperty('REGISTERED_IDS');
+  
+  if (!registeredIds) {
+    console.log('❌ 登録済みIDがありません');
+    console.log('先に test_Step3_RegisterDB を実行してください');
+    return null;
+  }
+  
+  const ids = JSON.parse(registeredIds);
+  console.log('登録済みID: ' + ids.join(', '));
+  
+  // スプシから予約情報を取得
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const sheet = ss.getSheetByName('Reservation_DB');
+  
+  if (!sheet) {
+    console.log('❌ Reservation_DBシートがありません');
+    return null;
+  }
+  
+  const data = sheet.getDataRange().getValues();
+  
+  for (let i = 1; i < data.length; i++) {
+    const rowId = String(data[i][0]);
+    
+    if (ids.includes(rowId)) {
+      const reservation = {
+        id: rowId,
+        date: data[i][2] instanceof Date 
+          ? data[i][2].toISOString().split('T')[0] 
+          : String(data[i][2]).split('T')[0],
+        time: data[i][5],
+        calendarEventId: data[i][7]
+      };
+      
+      console.log('');
+      console.log('📅 予約ID: ' + reservation.id);
+      console.log('📆 日付: ' + reservation.date);
+      console.log('⏰ 時間: ' + reservation.time);
+      console.log('🗓 カレンダーID: ' + reservation.calendarEventId);
+      
+      if (!reservation.calendarEventId) {
+        console.log('⚠️ カレンダー未登録のためスキップ');
+        continue;
+      }
+      
+      // マージ処理実行
+      const result = Merger.processAfterCalendarRegistration(
+        reservation, 
+        reservation.calendarEventId
+      );
+      
+      console.log('');
+      if (result.merged) {
+        console.log('✅ マージ完了！');
+        console.log('  親イベント: ' + result.parentId);
+      } else if (result.needsSelection) {
+        console.log('⚠️ 複数の親候補があります');
+        result.candidates.forEach((c, i) => {
+          console.log('  ' + (i + 1) + '. ' + c.title + ' (スコア: ' + c.score + ')');
+        });
+        console.log('');
+        console.log('test_Merge_Select(番号) で選択してください');
+        
+        // 選択用に保存
+        props.setProperty('MERGE_CANDIDATES', JSON.stringify(result));
+      } else {
+        console.log('ℹ️ マージ対象なし');
+      }
+    }
+  }
+  
+  console.log('========================================');
 }
 
-function test_Merge_Cleanup() {
-  console.log('マージテスト: 削除（未実装）');
+/**
+ * マージテスト: 複数候補から選択してマージ
+ * @param {number} candidateIndex - 候補番号（1始まり）
+ */
+function test_Merge_Select(candidateIndex) {
+  console.log('========================================');
+  console.log('  マージテスト: 候補選択');
+  console.log('========================================');
+  
+  const props = PropertiesService.getScriptProperties();
+  const savedData = props.getProperty('MERGE_CANDIDATES');
+  
+  if (!savedData) {
+    console.log('❌ 候補データがありません');
+    console.log('先に test_Merge_Execute を実行してください');
+    return null;
+  }
+  
+  const data = JSON.parse(savedData);
+  const index = (candidateIndex || 1) - 1;
+  
+  if (index < 0 || index >= data.candidates.length) {
+    console.log('❌ 無効な候補番号: ' + candidateIndex);
+    console.log('有効な番号: 1 〜 ' + data.candidates.length);
+    return null;
+  }
+  
+  const selectedCandidate = data.candidates[index];
+  console.log('選択: ' + selectedCandidate.title);
+  
+  // カレンダーからイベントを取得
+  const calendarId = Config.get('CALENDAR_ID');
+  const calendar = CalendarApp.getCalendarById(calendarId);
+  const parentEvent = calendar.getEventById(selectedCandidate.id);
+  
+  if (!parentEvent) {
+    console.log('❌ 親イベントが見つかりません');
+    return null;
+  }
+  
+  // マージ実行
+  const result = Merger.executeMergeWithParent(data.childEvent, {
+    ...selectedCandidate,
+    event: parentEvent
+  });
+  
+  if (result.success) {
+    console.log('✅ マージ完了！');
+  } else {
+    console.log('❌ マージ失敗: ' + result.message);
+  }
+  
+  // 保存データをクリア
+  props.deleteProperty('MERGE_CANDIDATES');
+  
+  console.log('========================================');
+  return result;
+}
+
+/**
+ * マージテスト: マージ履歴を表示
+ */
+function test_Merge_History() {
+  console.log('========================================');
+  console.log('  マージ履歴');
+  console.log('========================================');
+  
+  const history = Merger.getMergeHistory(10);
+  
+  if (history.length === 0) {
+    console.log('マージ履歴はありません');
+  } else {
+    history.forEach((h, i) => {
+      console.log('');
+      console.log('【' + (i + 1) + '】' + h.date);
+      console.log('  親: ' + (h.parentTitle || h.parentEventId));
+      console.log('  スコア: ' + h.score);
+      console.log('  日時: ' + h.mergedAt);
+    });
+  }
+  
+  console.log('========================================');
+}
+
+/**
+ * マージテスト設定: Config値を確認
+ */
+function test_Merge_Config() {
+  console.log('========================================');
+  console.log('  マージ設定確認');
+  console.log('========================================');
+  
+  console.log('');
+  console.log('【現在の設定】');
+  console.log('  MERGE_ENABLED: ' + Config.get('MERGE_ENABLED'));
+  console.log('  MERGE_TITLE_KEYWORDS: ' + Config.get('MERGE_TITLE_KEYWORDS'));
+  console.log('  MERGE_MEMO_KEYWORDS: ' + Config.get('MERGE_MEMO_KEYWORDS'));
+  console.log('  MERGE_LOCATION: ' + Config.get('MERGE_LOCATION'));
+  console.log('  MERGE_TIME_TOLERANCE: ' + Config.get('MERGE_TIME_TOLERANCE') + '分');
+  console.log('  MERGE_MIN_SCORE: ' + Config.get('MERGE_MIN_SCORE') + '点');
+  console.log('  MERGE_AUTO_SCORE_DIFF: ' + Config.get('MERGE_AUTO_SCORE_DIFF') + '点');
+  console.log('');
+  console.log('【スコアリング】');
+  console.log('  場所一致: 100点');
+  console.log('  タイトルキーワード: 50点/個');
+  console.log('  メモキーワード: 30点/個');
+  console.log('  時間近接度: 0-10点');
+  
+  console.log('========================================');
 }

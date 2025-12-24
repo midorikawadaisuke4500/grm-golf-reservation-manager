@@ -140,7 +140,15 @@ function initConfigSheet() {
       ['AI_API_KEY', '', 'Generative AI API キー'],
       ['REMINDER_DAYS', '8', 'リマインダー日数'],
       ['IS_TEST_MODE', 'true', 'テストモード有効'],
-      ['NOTIFICATION_MODE', 'hybrid', '通知モード (line_only/web_only/hybrid)']
+      ['NOTIFICATION_MODE', 'hybrid', '通知モード (line_only/web_only/hybrid)'],
+      // マージ機能設定
+      ['MERGE_ENABLED', 'true', 'マージ機能有効/無効'],
+      ['MERGE_TITLE_KEYWORDS', 'ゴルフ,麻倉,GC,ゴルフ倶楽部', 'タイトル照合キーワード（カンマ区切り）'],
+      ['MERGE_MEMO_KEYWORDS', '登録元,みどっち', 'メモ照合キーワード（カンマ区切り）'],
+      ['MERGE_LOCATION', '麻倉ゴルフ倶楽部', '場所照合キーワード'],
+      ['MERGE_TIME_TOLERANCE', '60', '時間許容差（分）'],
+      ['MERGE_MIN_SCORE', '50', 'マージ最低スコア'],
+      ['MERGE_AUTO_SCORE_DIFF', '30', '自動マージスコア差']
     ];
     
     configSheet.getRange(2, 1, initialConfig.length, 3).setValues(initialConfig);

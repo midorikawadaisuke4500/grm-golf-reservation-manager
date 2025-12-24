@@ -3,15 +3,335 @@
  * 予定マージモジュール
  * 
  * Stage 6: 親予定と子予定のマージ機能（目玉機能）
+ * 
+ * 機能:
+ * - スコアリングによる親候補の検出
+ * - 複数候補時の選択機能
+ * - マージ実行とログ記録
  */
 
 const Merger = {
-  MERGED_TAG: '<マージ済み>',
+  MERGED_TAG: '＜マージ済み＞',
+  
+  // スコアリング設定
+  SCORE: {
+    LOCATION_MATCH: 100,      // 場所一致
+    TITLE_KEYWORD: 50,        // タイトルキーワード一致（1キーワードごと）
+    MEMO_KEYWORD: 30,         // メモキーワード一致（1キーワードごと）
+    TIME_PROXIMITY_MAX: 10    // 時間近接度（最大）
+  },
   
   /**
-   * マージ対象の予定を検出
+   * 親候補をスコアリングして検出
    * @param {string} date - 対象日付 (YYYY-MM-DD)
-   * @returns {Object} マージ情報
+   * @param {Object} childEvent - 子イベント情報
+   * @returns {Array<Object>} スコア付き親候補リスト
+   */
+  findParentCandidates(date, childEvent) {
+    GRMLogger.info('Stage6', '親候補検出開始', { date });
+    
+    // マージ設定を取得
+    const mergeEnabled = Config.get('MERGE_ENABLED') === 'true';
+    if (!mergeEnabled) {
+      GRMLogger.info('Stage6', 'マージ機能無効');
+      return [];
+    }
+    
+    const titleKeywords = (Config.get('MERGE_TITLE_KEYWORDS') || 'ゴルフ,麻倉').split(',');
+    const memoKeywords = (Config.get('MERGE_MEMO_KEYWORDS') || '').split(',').filter(k => k);
+    const locationKeyword = Config.get('MERGE_LOCATION') || '麻倉ゴルフ倶楽部';
+    const timeTolerance = parseInt(Config.get('MERGE_TIME_TOLERANCE')) || 60;
+    const minScore = parseInt(Config.get('MERGE_MIN_SCORE')) || 50;
+    
+    // カレンダーから同日の全イベントを取得
+    const calendarId = Config.get('CALENDAR_ID');
+    const calendar = CalendarApp.getCalendarById(calendarId);
+    
+    if (!calendar) {
+      GRMLogger.error('Stage6', 'カレンダー取得失敗');
+      return [];
+    }
+    
+    const targetDate = new Date(date);
+    const startOfDay = new Date(targetDate);
+    startOfDay.setHours(0, 0, 0, 0);
+    const endOfDay = new Date(targetDate);
+    endOfDay.setHours(23, 59, 59, 999);
+    
+    const allEvents = calendar.getEvents(startOfDay, endOfDay);
+    const candidates = [];
+    
+    for (const event of allEvents) {
+      const title = event.getTitle() || '';
+      const description = event.getDescription() || '';
+      const location = event.getLocation() || '';
+      
+      // 既にマージ済みはスキップ
+      if (title.includes(this.MERGED_TAG)) {
+        continue;
+      }
+      
+      // GRMシステムが登録したイベント（子）はスキップ
+      if (description.includes('[System:GolfMgr]')) {
+        continue;
+      }
+      
+      // スコア計算
+      let score = 0;
+      const matchedConditions = [];
+      
+      // 場所一致
+      if (location && location.includes(locationKeyword)) {
+        score += this.SCORE.LOCATION_MATCH;
+        matchedConditions.push('場所一致');
+      }
+      
+      // タイトルキーワード
+      for (const keyword of titleKeywords) {
+        if (keyword && title.includes(keyword)) {
+          score += this.SCORE.TITLE_KEYWORD;
+          matchedConditions.push(`タイトル:${keyword}`);
+        }
+      }
+      
+      // メモキーワード
+      for (const keyword of memoKeywords) {
+        if (keyword && description.includes(keyword)) {
+          score += this.SCORE.MEMO_KEYWORD;
+          matchedConditions.push(`メモ:${keyword}`);
+        }
+      }
+      
+      // 時間近接度（子イベントの時間との差）
+      if (childEvent && childEvent.time) {
+        const parentStartHour = event.getStartTime().getHours();
+        const parentStartMinute = event.getStartTime().getMinutes();
+        const parentMinutes = parentStartHour * 60 + parentStartMinute;
+        
+        const childTimeParts = childEvent.time.split(':');
+        const childMinutes = parseInt(childTimeParts[0]) * 60 + parseInt(childTimeParts[1] || 0);
+        
+        const timeDiff = Math.abs(parentMinutes - childMinutes);
+        
+        if (timeDiff <= timeTolerance) {
+          const proximityScore = Math.max(0, this.SCORE.TIME_PROXIMITY_MAX - Math.floor(timeDiff / 10));
+          score += proximityScore;
+          matchedConditions.push(`時間近接(${timeDiff}分差)`);
+        }
+      }
+      
+      // 最低スコア以上なら候補に追加
+      if (score >= minScore) {
+        candidates.push({
+          id: event.getId(),
+          title: title,
+          description: description,
+          location: location,
+          startTime: event.getStartTime(),
+          endTime: event.getEndTime(),
+          score: score,
+          matchedConditions: matchedConditions,
+          event: event
+        });
+      }
+    }
+    
+    // スコア順にソート（高い順）
+    candidates.sort((a, b) => b.score - a.score);
+    
+    GRMLogger.info('Stage6', '親候補検出完了', { 
+      candidateCount: candidates.length,
+      candidates: candidates.map(c => ({ title: c.title, score: c.score }))
+    });
+    
+    return candidates;
+  },
+  
+  /**
+   * マージ実行（親を指定）
+   * @param {Object} childEvent - 子イベント情報
+   * @param {Object} parentCandidate - 親候補（findParentCandidatesの結果から1つ）
+   * @returns {Object} マージ結果
+   */
+  executeMergeWithParent(childEvent, parentCandidate) {
+    GRMLogger.info('Stage6', 'マージ実行開始', { 
+      childId: childEvent.id,
+      parentId: parentCandidate.id 
+    });
+    
+    try {
+      const calendarId = Config.get('CALENDAR_ID');
+      const calendar = CalendarApp.getCalendarById(calendarId);
+      
+      // 1. 親タイトルに「＜マージ済み＞」を付加
+      const parentEvent = parentCandidate.event || calendar.getEventById(parentCandidate.id);
+      if (parentEvent) {
+        const newParentTitle = `${this.MERGED_TAG}${parentEvent.getTitle()}`;
+        parentEvent.setTitle(newParentTitle);
+        GRMLogger.info('Stage6', '親タイトル更新', { newTitle: newParentTitle });
+      }
+      
+      // 2. 子タイトルに「＜マージ済み＞」を付加
+      const childCalendarEvent = calendar.getEventById(childEvent.calendarEventId || childEvent.id);
+      if (childCalendarEvent) {
+        const newChildTitle = `${this.MERGED_TAG}${childCalendarEvent.getTitle()}`;
+        childCalendarEvent.setTitle(newChildTitle);
+        GRMLogger.info('Stage6', '子タイトル更新', { newTitle: newChildTitle });
+      }
+      
+      // 3. マージログを記録
+      this.logMergeV2(childEvent, parentCandidate);
+      
+      // 4. スプシのステータスを更新
+      this.updateReservationMergeStatus(childEvent.reservationId, parentCandidate);
+      
+      GRMLogger.info('Stage6', 'マージ実行完了');
+      
+      return {
+        success: true,
+        message: 'マージ完了',
+        parentId: parentCandidate.id,
+        childId: childEvent.id
+      };
+      
+    } catch (e) {
+      GRMLogger.error('Stage6', 'マージ実行エラー', { error: e.message });
+      return { success: false, message: e.message };
+    }
+  },
+  
+  /**
+   * マージログを記録（V2）
+   */
+  logMergeV2(childEvent, parentCandidate) {
+    try {
+      const ss = SpreadsheetApp.getActiveSpreadsheet();
+      let logSheet = ss.getSheetByName(Config.SHEET_NAMES.MERGE_LOG);
+      
+      if (!logSheet) {
+        logSheet = ss.insertSheet(Config.SHEET_NAMES.MERGE_LOG);
+        logSheet.getRange('A1:H1').setValues([[
+          'MergeID', 'Date', 'ChildReservationID', 'ChildEventID', 'ParentEventID', 'ParentTitle', 'Score', 'MergedAt'
+        ]]);
+        logSheet.getRange('A1:H1').setFontWeight('bold').setBackground('#4a4a4a').setFontColor('#ffffff');
+      }
+      
+      const mergeId = Utilities.getUuid();
+      
+      logSheet.appendRow([
+        mergeId,
+        childEvent.date || new Date().toISOString().split('T')[0],
+        childEvent.reservationId || '',
+        childEvent.calendarEventId || childEvent.id || '',
+        parentCandidate.id,
+        parentCandidate.title,
+        parentCandidate.score,
+        new Date().toISOString()
+      ]);
+      
+    } catch (e) {
+      GRMLogger.warn('Stage6', 'マージログ記録エラー', { error: e.message });
+    }
+  },
+  
+  /**
+   * Reservation_DBのマージステータスを更新
+   */
+  updateReservationMergeStatus(reservationId, parentCandidate) {
+    if (!reservationId) return;
+    
+    try {
+      const ss = SpreadsheetApp.getActiveSpreadsheet();
+      const sheet = ss.getSheetByName(Config.SHEET_NAMES.RESERVATION_DB);
+      
+      if (!sheet) return;
+      
+      const data = sheet.getDataRange().getValues();
+      
+      for (let i = 1; i < data.length; i++) {
+        if (String(data[i][0]) === reservationId) {
+          // ステータスを 'merged' に更新
+          sheet.getRange(i + 1, 7).setValue('merged');
+          // 備考にマージ情報を追記
+          const currentNote = data[i][11] || '';
+          const mergeNote = `マージ済み(親:${parentCandidate.title.substring(0, 20)}, スコア:${parentCandidate.score})`;
+          sheet.getRange(i + 1, 12).setValue(currentNote ? `${currentNote} | ${mergeNote}` : mergeNote);
+          break;
+        }
+      }
+    } catch (e) {
+      GRMLogger.warn('Stage6', 'ステータス更新エラー', { error: e.message });
+    }
+  },
+  
+  /**
+   * カレンダー登録後にマージ処理を実行
+   * @param {Object} reservation - 予約情報
+   * @param {string} calendarEventId - 登録されたカレンダーイベントID
+   * @returns {Object} マージ結果
+   */
+  processAfterCalendarRegistration(reservation, calendarEventId) {
+    GRMLogger.info('Stage6', 'カレンダー登録後マージ処理開始');
+    
+    const childEvent = {
+      id: calendarEventId,
+      calendarEventId: calendarEventId,
+      reservationId: reservation.id,
+      date: reservation.date,
+      time: reservation.time
+    };
+    
+    // 親候補を検出
+    const candidates = this.findParentCandidates(reservation.date, childEvent);
+    
+    if (candidates.length === 0) {
+      GRMLogger.info('Stage6', 'マージ対象なし');
+      return { success: true, merged: false, message: 'マージ対象なし' };
+    }
+    
+    const autoScoreDiff = parseInt(Config.get('MERGE_AUTO_SCORE_DIFF')) || 30;
+    
+    if (candidates.length === 1) {
+      // 候補が1つなら自動マージ
+      const result = this.executeMergeWithParent(childEvent, candidates[0]);
+      return { ...result, merged: true, autoMerged: true };
+    }
+    
+    // 複数候補の場合、スコア差を確認
+    const scoreDiff = candidates[0].score - candidates[1].score;
+    
+    if (scoreDiff >= autoScoreDiff) {
+      // スコア差が十分なら自動マージ
+      const result = this.executeMergeWithParent(childEvent, candidates[0]);
+      return { ...result, merged: true, autoMerged: true };
+    }
+    
+    // 複数候補がありユーザー選択が必要
+    GRMLogger.info('Stage6', '複数候補あり、ユーザー選択必要', { 
+      candidateCount: candidates.length 
+    });
+    
+    return {
+      success: true,
+      merged: false,
+      needsSelection: true,
+      candidates: candidates.map(c => ({
+        id: c.id,
+        title: c.title,
+        score: c.score,
+        matchedConditions: c.matchedConditions,
+        startTime: c.startTime.toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit' })
+      })),
+      childEvent: childEvent
+    };
+  },
+  
+  // ========================================
+  // 以下は既存機能（後方互換性のため残す）
+  // ========================================
+  
+  /**
+   * マージ対象の予定を検出（旧バージョン）
    */
   detectMergeCandidates(date) {
     GRMLogger.info('Stage6', 'マージ候補検出開始', { date });
@@ -19,7 +339,6 @@ const Merger = {
     const parent = GRMCalendar.findParentEvent(date);
     const children = GRMCalendar.findChildEvents(date);
     
-    // マージ済みを除外
     const unmergedChildren = children.filter(c => 
       !c.title.includes(this.MERGED_TAG)
     );
@@ -32,164 +351,7 @@ const Merger = {
       canMerge: !!parent && unmergedChildren.length > 0
     };
     
-    GRMLogger.info('Stage6', 'マージ候補検出完了', {
-      hasParent: result.hasParent,
-      childCount: unmergedChildren.length,
-      canMerge: result.canMerge
-    });
-    
     return result;
-  },
-
-  /**
-   * 今後の予約に対するマージ候補を全て検出
-   * @returns {Array<Object>} マージ候補リスト
-   */
-  detectAllMergeCandidates() {
-    GRMLogger.info('Stage6', '全マージ候補検出開始');
-    
-    const ss = SpreadsheetApp.getActiveSpreadsheet();
-    const dbSheet = ss.getSheetByName(Config.SHEET_NAMES.RESERVATION_DB);
-    
-    if (!dbSheet) {
-      return [];
-    }
-    
-    const data = dbSheet.getDataRange().getValues();
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    
-    const candidates = [];
-    
-    // ヘッダー行をスキップ
-    for (let i = 1; i < data.length; i++) {
-      const row = data[i];
-      const dateStr = row[2]; // 予約日
-      const status = row[6];  // ステータス
-      
-      if (status === 'cancelled') continue;
-      
-      const reservationDate = new Date(dateStr);
-      if (reservationDate < today) continue;
-      
-      const mergeInfo = this.detectMergeCandidates(dateStr);
-      if (mergeInfo.canMerge) {
-        mergeInfo.reservationId = row[0];
-        candidates.push(mergeInfo);
-      }
-    }
-    
-    GRMLogger.info('Stage6', '全マージ候補検出完了', { 
-      candidateCount: candidates.length 
-    });
-    
-    return candidates;
-  },
-
-  /**
-   * マージを実行
-   * @param {string} date - 対象日付
-   * @returns {Object} マージ結果
-   */
-  executeMerge(date) {
-    GRMLogger.info('Stage6', 'マージ実行開始', { date });
-    
-    try {
-      const mergeInfo = this.detectMergeCandidates(date);
-      
-      if (!mergeInfo.canMerge) {
-        GRMLogger.warn('Stage6', 'マージ対象なし', { date });
-        return { success: false, message: 'マージ対象がありません' };
-      }
-      
-      const parent = mergeInfo.parent;
-      const children = mergeInfo.children;
-      
-      // 1. 子予定のメモを収集
-      const childNotes = children.map(child => {
-        return `\n【${child.title}】\n${child.description || '(メモなし)'}`;
-      }).join('\n');
-      
-      // 2. 親予定の説明文を更新
-      const newDescription = `${parent.description}
-
---- マージされたメモ (${new Date().toLocaleString('ja-JP')}) ---
-${childNotes}`;
-      
-      parent.event.setDescription(newDescription);
-      
-      // 3. 子予定のタイトルを更新
-      const calendarId = Config.get('CALENDAR_ID');
-      const calendar = CalendarApp.getCalendarById(calendarId);
-      
-      children.forEach(child => {
-        const childEvent = calendar.getEventById(child.id);
-        if (childEvent) {
-          const newTitle = `${this.MERGED_TAG} ${child.title}`;
-          childEvent.setTitle(newTitle);
-        }
-      });
-      
-      // 4. マージログを記録
-      this.logMerge(date, parent, children);
-      
-      GRMLogger.info('Stage6', 'マージ実行完了', { 
-        date,
-        mergedCount: children.length
-      });
-      
-      GRMLogger.logTransaction('Stage6', 'MERGE', parent.id, 'success', {
-        date,
-        childCount: children.length,
-        childIds: children.map(c => c.id)
-      });
-      
-      return {
-        success: true,
-        message: `${children.length}件の子予定をマージしました`,
-        mergedCount: children.length
-      };
-      
-    } catch (e) {
-      GRMLogger.error('Stage6', 'マージ実行エラー', { 
-        date,
-        error: e.message 
-      });
-      return { success: false, message: e.message };
-    }
-  },
-
-  /**
-   * マージログを記録
-   */
-  logMerge(date, parent, children) {
-    try {
-      const ss = SpreadsheetApp.getActiveSpreadsheet();
-      let logSheet = ss.getSheetByName(Config.SHEET_NAMES.MERGE_LOG);
-      
-      if (!logSheet) {
-        logSheet = ss.insertSheet(Config.SHEET_NAMES.MERGE_LOG);
-        logSheet.getRange('A1:F1').setValues([[
-          'MergeID', 'Date', 'ParentEventID', 'ChildEventIDs', 'MergedAt', 'ChildCount'
-        ]]);
-        logSheet.getRange('A1:F1').setFontWeight('bold').setBackground('#4a4a4a');
-      }
-      
-      const mergeId = Utilities.getUuid();
-      const childIds = children.map(c => c.id).join(',');
-      
-      logSheet.appendRow([
-        mergeId,
-        date,
-        parent.id,
-        childIds,
-        new Date().toISOString(),
-        children.length
-      ]);
-      
-    } catch (e) {
-      GRMLogger.warn('Stage6', 'マージログ記録エラー', { error: e.message });
-    }
   },
 
   /**
@@ -207,16 +369,17 @@ ${childNotes}`;
       const data = logSheet.getDataRange().getValues();
       const history = [];
       
-      // 新しい順に取得（ヘッダー行をスキップ）
       for (let i = data.length - 1; i >= 1 && history.length < limit; i--) {
         const row = data[i];
         history.push({
           mergeId: row[0],
           date: row[1],
-          parentEventId: row[2],
-          childEventIds: row[3].split(','),
-          mergedAt: row[4],
-          childCount: row[5]
+          childReservationId: row[2],
+          childEventId: row[3],
+          parentEventId: row[4],
+          parentTitle: row[5],
+          score: row[6],
+          mergedAt: row[7]
         });
       }
       
@@ -226,36 +389,5 @@ ${childNotes}`;
       GRMLogger.error('Stage6', 'マージ履歴取得エラー', { error: e.message });
       return [];
     }
-  },
-
-  /**
-   * 全マージ待ちを一括実行
-   */
-  executeAllMerges() {
-    GRMLogger.info('Stage6', '一括マージ開始');
-    
-    const candidates = this.detectAllMergeCandidates();
-    const results = [];
-    
-    candidates.forEach(candidate => {
-      const result = this.executeMerge(candidate.date);
-      results.push({
-        date: candidate.date,
-        ...result
-      });
-    });
-    
-    const successCount = results.filter(r => r.success).length;
-    
-    GRMLogger.info('Stage6', '一括マージ完了', { 
-      total: candidates.length,
-      success: successCount
-    });
-    
-    return {
-      total: candidates.length,
-      success: successCount,
-      results
-    };
   }
 };
