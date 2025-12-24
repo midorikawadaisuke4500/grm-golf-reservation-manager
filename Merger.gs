@@ -361,6 +361,87 @@ const Merger = {
   },
 
   /**
+   * 全予約日のマージ候補を検出
+   * @returns {Array<Object>} マージ可能な予定のリスト
+   */
+  detectAllMergeCandidates() {
+    try {
+      GRMLogger.info('Stage6', '全マージ候補検出開始');
+      
+      // マージ機能が無効なら空配列を返す
+      const mergeEnabled = String(Config.get('MERGE_ENABLED')).toLowerCase() === 'true';
+      if (!mergeEnabled) {
+        return [];
+      }
+      
+      // 今後の予約を取得
+      const ss = SpreadsheetApp.getActiveSpreadsheet();
+      const dbSheet = ss.getSheetByName(Config.SHEET_NAMES.RESERVATION_DB);
+      
+      if (!dbSheet) {
+        return [];
+      }
+      
+      const data = dbSheet.getDataRange().getValues();
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      
+      const allCandidates = [];
+      const checkedDates = new Set();
+      
+      for (let i = 1; i < data.length; i++) {
+        const row = data[i];
+        const status = row[6];
+        
+        // confirmed または merged でない予約をスキップ
+        if (status !== 'confirmed' && status !== 'pending') {
+          continue;
+        }
+        
+        // 日付を取得
+        let dateValue = row[2];
+        if (!(dateValue instanceof Date)) {
+          continue;
+        }
+        
+        // 過去の日付はスキップ
+        if (dateValue < today) {
+          continue;
+        }
+        
+        // YYYY-MM-DD形式に変換
+        const year = dateValue.getFullYear();
+        const month = String(dateValue.getMonth() + 1).padStart(2, '0');
+        const day = String(dateValue.getDate()).padStart(2, '0');
+        const dateStr = year + '-' + month + '-' + day;
+        
+        // 同じ日付は一度だけチェック
+        if (checkedDates.has(dateStr)) {
+          continue;
+        }
+        checkedDates.add(dateStr);
+        
+        // この日付のマージ候補を検出
+        const candidates = this.detectMergeCandidates(dateStr);
+        
+        if (candidates.canMerge) {
+          allCandidates.push(candidates);
+        }
+      }
+      
+      GRMLogger.info('Stage6', '全マージ候補検出完了', { 
+        count: allCandidates.length 
+      });
+      
+      return allCandidates;
+      
+    } catch (e) {
+      GRMLogger.error('Stage6', '全マージ候補検出エラー', { error: e.message });
+      return [];
+    }
+  },
+
+  /**
    * マージ履歴を取得
    */
   getMergeHistory(limit = 20) {
