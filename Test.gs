@@ -160,6 +160,13 @@ function test_Step3_RegisterDB() {
   const registeredIds = [];
   const currentYear = new Date().getFullYear();
   
+  // 既存IDを取得して重複をチェック
+  const existingData = sheet.getDataRange().getValues();
+  const existingIds = {};
+  for (let j = 1; j < existingData.length; j++) {
+    existingIds[String(existingData[j][0])] = true;
+  }
+  
   reservations.forEach(function(res, i) {
     // 日付バリデーションと補正
     let dateStr = res.date;
@@ -188,6 +195,13 @@ function test_Step3_RegisterDB() {
     }
     
     const id = 'res-' + year + '-' + month + '-' + String(i + 1).padStart(3, '0');
+    
+    // 重複チェック - 既に同じIDが存在する場合はスキップ
+    if (existingIds[id]) {
+      console.log('⚠️ 重複IDをスキップ: ' + id);
+      return;
+    }
+    
     const now = new Date();
     
     sheet.appendRow([

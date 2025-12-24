@@ -642,6 +642,13 @@ function handleMessage(event) {
       var now = new Date().toISOString();
       var calendarRegistered = 0;
       
+      // 既存IDを取得して重複をチェック
+      var existingData = sheet.getDataRange().getValues();
+      var existingIds = {};
+      for (var j = 1; j < existingData.length; j++) {
+        existingIds[String(existingData[j][0])] = true;
+      }
+      
       for (var i = 0; i < reservations.length; i++) {
         var res = reservations[i];
         
@@ -666,6 +673,15 @@ function handleMessage(event) {
         }
         
         var id = 'res-' + year + '-' + month + '-' + String(i + 1).padStart(3, '0');
+        
+        // 重複チェック - 既に同じIDが存在する場合はスキップ
+        if (existingIds[id]) {
+          GRMLogger.warn('LINE', '重複IDをスキップ', { id: id });
+          continue;
+        }
+        
+        // IDを追加して他の重複も防ぐ
+        res.id = id;
         
         // カレンダー登録
         var eventId = '';

@@ -2796,10 +2796,19 @@ function approveReservationToCalendar(reservationId) {
         console.log('イベント終了: ' + endDate.toLocaleString('ja-JP'));
         
         // イベント作成
+        const course = data[i][4] || 'OUT';
         const title = '【外出】ゴルフ 麻倉 ' + timeDisplay + ' 残数3';
+        const description = `[System:GolfMgr]
+コース: ${course}
+スタート時間: ${timeDisplay}
+予約ID: ${reservationId}
+
+---
+このイベントはGRMシステムによって自動登録されました。`;
+        
         const event = calendar.createEvent(title, eventDate, endDate, {
           location: '麻倉ゴルフ倶楽部',
-          description: '[System:GolfMgr] ID:' + reservationId
+          description: description
         });
         
         const eventId = event.getId();
