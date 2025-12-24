@@ -1,0 +1,413 @@
+<!DOCTYPE html>
+<html lang="ja">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>GRM Fast - Golf Reservation Manager</title>
+    <style>
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, sans-serif;
+            background: #0d1117;
+            color: #f0f6fc;
+            min-height: 100vh;
+            padding-bottom: 70px;
+        }
+
+        .header {
+            background: linear-gradient(135deg, #238636 0%, #1a7f37 100%);
+            padding: 20px;
+            text-align: center;
+        }
+
+        .header h1 {
+            font-size: 1.25rem;
+            font-weight: 600;
+        }
+
+        .header p {
+            font-size: 0.75rem;
+            opacity: 0.8;
+            margin-top: 4px;
+        }
+
+        .stats {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 8px;
+            padding: 16px;
+        }
+
+        .stat {
+            background: #161b22;
+            border: 1px solid #30363d;
+            border-radius: 8px;
+            padding: 12px 8px;
+            text-align: center;
+        }
+
+        .stat-value {
+            font-size: 1.5rem;
+            font-weight: 700;
+        }
+
+        .stat-value.green {
+            color: #3fb950;
+        }
+
+        .stat-value.yellow {
+            color: #d29922;
+        }
+
+        .stat-value.red {
+            color: #f85149;
+        }
+
+        .stat-label {
+            font-size: 0.625rem;
+            color: #8b949e;
+            margin-top: 2px;
+        }
+
+        .section {
+            padding: 0 16px 16px;
+        }
+
+        .section-title {
+            font-size: 0.875rem;
+            font-weight: 600;
+            margin-bottom: 12px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .card {
+            background: #161b22;
+            border: 1px solid #30363d;
+            border-radius: 12px;
+            padding: 16px;
+            margin-bottom: 12px;
+        }
+
+        .card-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            margin-bottom: 12px;
+        }
+
+        .date {
+            font-size: 1.25rem;
+            font-weight: 700;
+        }
+
+        .weekday {
+            display: inline-block;
+            background: #238636;
+            padding: 2px 8px;
+            border-radius: 4px;
+            font-size: 0.75rem;
+            margin-left: 8px;
+        }
+
+        .badge {
+            font-size: 0.625rem;
+            padding: 4px 8px;
+            border-radius: 20px;
+            font-weight: 600;
+        }
+
+        .badge-pending {
+            background: rgba(210, 153, 34, 0.2);
+            color: #d29922;
+        }
+
+        .badge-confirmed {
+            background: rgba(63, 185, 80, 0.2);
+            color: #3fb950;
+        }
+
+        .info {
+            display: flex;
+            gap: 16px;
+            color: #8b949e;
+            font-size: 0.875rem;
+        }
+
+        .btn {
+            background: #238636;
+            color: white;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 6px;
+            font-size: 0.75rem;
+            font-weight: 600;
+            cursor: pointer;
+            margin-top: 12px;
+        }
+
+        .btn:disabled {
+            opacity: 0.5;
+        }
+
+        .btn-all {
+            padding: 6px 12px;
+            font-size: 0.625rem;
+        }
+
+        .nav {
+            position: fixed;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            background: #161b22;
+            border-top: 1px solid #30363d;
+            display: flex;
+            justify-content: space-around;
+            padding: 12px 0;
+        }
+
+        .nav-item {
+            background: none;
+            border: none;
+            color: #8b949e;
+            font-size: 0.625rem;
+            cursor: pointer;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 4px;
+        }
+
+        .nav-item.active {
+            color: #3fb950;
+        }
+
+        .nav-icon {
+            font-size: 1.25rem;
+        }
+
+        .loading {
+            color: #8b949e;
+            font-size: 0.75rem;
+            text-align: center;
+            padding: 8px;
+        }
+
+        .empty {
+            text-align: center;
+            padding: 40px;
+            color: #8b949e;
+        }
+
+        #content {
+            min-height: 200px;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="header">
+        <h1>⛳ Golf Manager</h1>
+        <p>麻倉ゴルフ倶楽部</p>
+    </div>
+
+    <div class="stats" id="stats">
+        <div class="stat">
+            <div class="stat-value green" id="statUpcoming">-</div>
+            <div class="stat-label">予約</div>
+        </div>
+        <div class="stat">
+            <div class="stat-value green" id="statConfirmed">-</div>
+            <div class="stat-label">確定</div>
+        </div>
+        <div class="stat">
+            <div class="stat-value yellow" id="statPending">-</div>
+            <div class="stat-label">待ち</div>
+        </div>
+        <div class="stat">
+            <div class="stat-value red" id="statReminder">-</div>
+            <div class="stat-label">要確認</div>
+        </div>
+    </div>
+
+    <div id="content">
+        <div class="loading">📡 データ取得中...</div>
+    </div>
+
+    <nav class="nav">
+        <button class="nav-item active" onclick="showView('home')"><span class="nav-icon">🏠</span>ホーム</button>
+        <button class="nav-item" onclick="showView('calendar')"><span class="nav-icon">📅</span>予約</button>
+        <button class="nav-item" onclick="showView('settings')"><span class="nav-icon">⚙️</span>設定</button>
+    </nav>
+
+    <script>
+        const API = 'https://script.google.com/macros/s/AKfycbwk35HLUGvwIlP_W0AtBH3wbDbYw_YpC7JVtTdRnLWI62r2raz6HdMUNyMxD5uFlQ8/exec';
+        let data = { stats: {}, reservations: [] };
+        let currentView = 'home';
+
+        // 即座にUIを表示（ダミーデータ）
+        document.addEventListener('DOMContentLoaded', () => {
+            showView('home');
+            loadData();
+        });
+
+        async function loadData() {
+            try {
+                const res = await fetch(API + '?action=getInitialData');
+                data = await res.json();
+                updateStats();
+                showView(currentView);
+            } catch (e) {
+                console.error('Load failed:', e);
+            }
+        }
+
+        function updateStats() {
+            const s = data.stats || {};
+            document.getElementById('statUpcoming').textContent = s.upcoming || 0;
+            document.getElementById('statConfirmed').textContent = s.confirmed || 0;
+            document.getElementById('statPending').textContent = s.pending || 0;
+            document.getElementById('statReminder').textContent = s.needsReminder || 0;
+        }
+
+        function showView(view) {
+            currentView = view;
+            document.querySelectorAll('.nav-item').forEach((n, i) => {
+                n.classList.toggle('active', ['home', 'calendar', 'settings'][i] === view);
+            });
+            const content = document.getElementById('content');
+
+            if (view === 'home') {
+                content.innerHTML = `
+                    <div class="section">
+                        <h2 class="section-title">システム情報</h2>
+                        <div class="card">
+                            <div style="display:flex;justify-content:space-between;margin-bottom:8px;">
+                                <span style="color:#8b949e;">接続</span>
+                                <span class="badge badge-confirmed">GAS ライブ</span>
+                            </div>
+                            <div style="display:flex;justify-content:space-between;">
+                                <span style="color:#8b949e;">UI</span>
+                                <span>高速版 v2</span>
+                            </div>
+                        </div>
+                    </div>`;
+            } else if (view === 'calendar') {
+                const reservations = data.reservations || [];
+                const pending = reservations.filter(r => r.status === 'pending');
+                const confirmed = reservations.filter(r => r.status === 'confirmed');
+
+                let html = '<div class="section">';
+
+                if (pending.length > 0) {
+                    html += `<h2 class="section-title" style="color:#d29922;">⏳ 承認待ち (${pending.length}件)
+                        <button class="btn btn-all" onclick="approveAll()">✅ 一括承認</button>
+                    </h2>`;
+                    pending.forEach(r => { html += renderCard(r, 'pending'); });
+                }
+
+                if (confirmed.length > 0) {
+                    html += `<h2 class="section-title" style="color:#3fb950;margin-top:16px;">✅ 確定済み (${confirmed.length}件)</h2>`;
+                    confirmed.forEach(r => { html += renderCard(r, 'confirmed'); });
+                }
+
+                if (reservations.length === 0) {
+                    html += '<div class="empty">📅 予約データなし</div>';
+                }
+
+                html += '</div>';
+                content.innerHTML = html;
+            } else if (view === 'settings') {
+                content.innerHTML = `
+                    <div class="section">
+                        <h2 class="section-title">設定</h2>
+                        <div class="card">
+                            <div style="margin-bottom:12px;">
+                                <span style="color:#8b949e;">GAS API</span>
+                                <p style="font-size:0.625rem;word-break:break-all;margin-top:4px;">${API}</p>
+                            </div>
+                            <button class="btn" onclick="location.href='index.html'">📱 通常版UIに切替</button>
+                        </div>
+                    </div>`;
+            }
+        }
+
+        function renderCard(r, status) {
+            let year = '', month = '', day = '';
+            if (typeof r.date === 'string' && r.date.match(/^\d{4}-\d{2}-\d{2}/)) {
+                const parts = r.date.split('-');
+                year = parts[0]; month = parseInt(parts[1]); day = parseInt(parts[2]);
+            } else {
+                const d = new Date(r.date);
+                year = d.getFullYear(); month = d.getMonth() + 1; day = d.getDate();
+            }
+            const weekday = r.weekday || ['日', '月', '火', '水', '木', '金', '土'][new Date(r.date).getDay()];
+            const time = r.time || '--:--';
+            const course = r.course || 'OUT';
+            const badgeClass = status === 'pending' ? 'badge-pending' : 'badge-confirmed';
+            const badgeText = status === 'pending' ? '承認待ち' : '確定済み';
+            const btn = status === 'pending' ? `<button class="btn" id="btn-${r.id}" onclick="approve('${r.id}', this)">✅ 承認</button>` : '';
+
+            return `
+                <div class="card">
+                    <div class="card-header">
+                        <div><span class="date">${year}/${month}/${day}</span><span class="weekday">${weekday}</span></div>
+                        <span class="badge ${badgeClass}">${badgeText}</span>
+                    </div>
+                    <div class="info">
+                        <span>🕐 ${time}</span>
+                        <span>📍 ${course}コース</span>
+                    </div>
+                    ${btn}
+                </div>`;
+        }
+
+        async function approve(id, btn) {
+            if (!id) return alert('❌ ID不正');
+            btn.disabled = true;
+            btn.textContent = '処理中...';
+            try {
+                const res = await fetch(API + '?action=approveReservation&id=' + id);
+                const result = await res.json();
+                if (result.success) {
+                    alert('✅ カレンダーに登録しました');
+                    await loadData();
+                } else {
+                    alert('❌ 失敗: ' + (result.error || ''));
+                    btn.disabled = false;
+                    btn.textContent = '✅ 承認';
+                }
+            } catch (e) {
+                alert('❌ エラー: ' + e.message);
+                btn.disabled = false;
+                btn.textContent = '✅ 承認';
+            }
+        }
+
+        async function approveAll() {
+            if (!confirm('全て承認しますか？')) return;
+            try {
+                const res = await fetch(API + '?action=approveAllReservations');
+                const result = await res.json();
+                if (result.success) {
+                    alert('✅ ' + result.count + '件を登録しました');
+                    await loadData();
+                } else {
+                    alert('❌ 失敗: ' + (result.error || ''));
+                }
+            } catch (e) {
+                alert('❌ エラー');
+            }
+        }
+    </script>
+</body>
+
+</html>

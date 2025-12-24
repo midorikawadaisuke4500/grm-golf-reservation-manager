@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html lang="ja">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>GRM - UI選択</title>
+    <style>
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, sans-serif;
+            background: linear-gradient(135deg, #0d1117 0%, #161b22 100%);
+            color: #f0f6fc;
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+
+        h1 {
+            font-size: 1.5rem;
+            margin-bottom: 8px;
+        }
+
+        p {
+            color: #8b949e;
+            margin-bottom: 32px;
+        }
+
+        .options {
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+            width: 100%;
+            max-width: 320px;
+        }
+
+        .option {
+            display: block;
+            background: #161b22;
+            border: 2px solid #30363d;
+            border-radius: 12px;
+            padding: 20px;
+            text-decoration: none;
+            color: #f0f6fc;
+            transition: all 0.2s;
+        }
+
+        .option:hover {
+            border-color: #238636;
+            transform: translateY(-2px);
+        }
+
+        .option h2 {
+            font-size: 1.125rem;
+            margin-bottom: 8px;
+        }
+
+        .option p {
+            font-size: 0.75rem;
+            margin: 0;
+        }
+
+        .option.fast {
+            border-color: #238636;
+        }
+
+        .badge {
+            display: inline-block;
+            background: #238636;
+            padding: 2px 8px;
+            border-radius: 4px;
+            font-size: 0.625rem;
+            margin-left: 8px;
+        }
+    </style>
+</head>
+
+<body>
+    <h1>⛳ Golf Reservation Manager</h1>
+    <p>UIバージョンを選択</p>
+    <div class="options">
+        <a href="fast.html" class="option fast">
+            <h2>🚀 高速版 UI <span class="badge">推奨</span></h2>
+            <p>シンプルなデザインで即座に表示。軽量で高速。</p>
+        </a>
+        <a href="index.html" class="option">
+            <h2>✨ 通常版 UI</h2>
+            <p>リッチなアニメーションとグラスモーフィズムデザイン。</p>
+        </a>
+    </div>
+</body>
+
+</html>
