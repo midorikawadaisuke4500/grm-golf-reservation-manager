@@ -251,9 +251,22 @@ function test_Step4_NotifyLine() {
   
   // LINE通知
   if (isLineEnabled()) {
-    const message = '📅 新しい予約が登録されました\n\n' +
-                    '✅ 登録件数: ' + ids.length + '件\n\n' +
-                    '👆 WEB画面またはこのメッセージで承認してください';
+    // 予約詳細を取得
+    const pendingData = props.getProperty('PENDING_RESERVATIONS');
+    let details = '';
+    if (pendingData) {
+      const reservations = JSON.parse(pendingData);
+      details = reservations.map(function(r, i) {
+        return (i + 1) + '. ' + r.date + '（' + r.weekday + '）' + r.course + ' ' + r.time;
+      }).join('\n');
+    }
+    
+    const message = '📅 予約がスプレッドシートに登録されました\n\n' +
+                    details + '\n\n' +
+                    '────────────\n' +
+                    '🗓 カレンダーに登録しますか？\n\n' +
+                    '「登録」と返信 → カレンダー登録開始\n' +
+                    '「キャンセル」 → 取消';
     
     const result = LINE.sendTextMessage(message);
     
