@@ -434,6 +434,7 @@
                 if (result.success) {
                     alert('✅ 通知モードを「' + (mode === 'web_only' ? 'Webのみ' : 'LINE+Web') + '」に変更しました');
                     await loadData();
+                    showView('settings'); // UIを更新
                 } else {
                     alert('❌ 変更失敗: ' + (result.error || ''));
                 }
