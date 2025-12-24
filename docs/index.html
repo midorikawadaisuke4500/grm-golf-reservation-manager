@@ -849,15 +849,15 @@
                         <span>midorikawa@agentgate.jp</span>
                     </div>
                     <div style="display: flex; justify-content: space-between; align-items: center;">
-                        <span style="color: var(--text-muted);">バージョン</span>
-                        <span>ハイブリッド</span>
+                        <span style="color: var(--text-muted);">UIバージョン</span>
+                        <span>通常版</span>
                     </div>
                 </div>
                 
                 <div class="card" style="margin-top: var(--space-md);">
                     <h3 style="margin-bottom: var(--space-md); color: var(--text-primary);">通知モード</h3>
                     <div style="display: flex; gap: var(--space-sm);">
-                        <button id="modeWeb" class="btn ${this.notificationMode === 'web' ? 'btn-primary' : ''}" style="flex: 1;" onclick="App.setNotificationMode('web')">
+                        <button id="modeWeb" class="btn ${this.notificationMode === 'web_only' || this.notificationMode === 'web' ? 'btn-primary' : ''}" style="flex: 1;" onclick="App.setNotificationMode('web_only')">
                             📱 Webのみ
                         </button>
                         <button id="modeHybrid" class="btn ${this.notificationMode === 'hybrid' ? 'btn-primary' : ''}" style="flex: 1;" onclick="App.setNotificationMode('hybrid')">
@@ -865,8 +865,15 @@
                         </button>
                     </div>
                     <p style="margin-top: var(--space-sm); font-size: var(--font-size-xs); color: var(--text-muted);">
-                        ${this.notificationMode === 'web' ? 'LINE通知は無効です' : 'LINE通知が有効です'}
+                        現在: ${this.notificationMode === 'web_only' || this.notificationMode === 'web' ? 'LINE通知は無効です' : 'LINE通知が有効です'}
                     </p>
+                </div>
+                
+                <div class="card" style="margin-top: var(--space-md);">
+                    <h3 style="margin-bottom: var(--space-md); color: var(--text-primary);">UI切替</h3>
+                    <button class="btn btn-secondary btn-block" onclick="location.href='fast.html'">
+                        🚀 高速版UIに切替
+                    </button>
                 </div>
                 
                 <button class="btn btn-primary btn-block" style="margin-top: var(--space-md);" onclick="App.testNotification()">

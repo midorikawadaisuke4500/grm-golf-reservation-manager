@@ -73,6 +73,13 @@ function handleGetRequest(action, params) {
         // 承認後はキャッシュをクリア
         clearDataCache();
         break;
+      case 'setNotificationMode':
+        // 通知モードを設定（web_only または hybrid）
+        const mode = params.mode || 'hybrid';
+        setNotificationModeConfig(mode);
+        result = { success: true, mode: mode };
+        clearDataCache();
+        break;
       default:
         result = { error: 'Unknown action: ' + action };
     }
@@ -203,7 +210,7 @@ function getInitialDataCached() {
   const reservations = BrainManager.getReservations();
   const settings = {
     lineEnabled: isLineEnabled(),
-    mode: isLineEnabled() ? 'hybrid' : 'web'
+    mode: PropertiesService.getScriptProperties().getProperty('NOTIFICATION_MODE') || (isLineEnabled() ? 'hybrid' : 'web_only')
   };
   
   const result = {
@@ -2646,6 +2653,46 @@ function disableLineNotification() {
 function isLineEnabled() {
   var enabled = PropertiesService.getScriptProperties().getProperty('LINE_ENABLED');
   return enabled !== 'false'; // デフォルトはtrue
+}
+
+/**
+ * 通知モードを設定（スプシとPropertiesの両方を更新）
+ * @param {string} mode - 'web_only' または 'hybrid'
+ */
+function setNotificationModeConfig(mode) {
+  const validModes = ['web_only', 'hybrid', 'line_only'];
+  if (!validModes.includes(mode)) {
+    mode = 'hybrid';
+  }
+  
+  // PropertiesServiceに保存
+  PropertiesService.getScriptProperties().setProperty('NOTIFICATION_MODE', mode);
+  
+  // LINE_ENABLEDも連動
+  if (mode === 'web_only') {
+    PropertiesService.getScriptProperties().setProperty('LINE_ENABLED', 'false');
+  } else {
+    PropertiesService.getScriptProperties().setProperty('LINE_ENABLED', 'true');
+  }
+  
+  // Configシートにも保存
+  try {
+    const ss = SpreadsheetApp.getActiveSpreadsheet();
+    const configSheet = ss.getSheetByName('Config');
+    if (configSheet) {
+      const data = configSheet.getDataRange().getValues();
+      for (let i = 1; i < data.length; i++) {
+        if (data[i][0] === 'NOTIFICATION_MODE') {
+          configSheet.getRange(i + 1, 2).setValue(mode);
+          break;
+        }
+      }
+    }
+  } catch (e) {
+    console.log('Configシート更新エラー:', e.message);
+  }
+  
+  console.log('✅ 通知モードを設定:', mode);
 }
 
 /**

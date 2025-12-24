@@ -326,15 +326,34 @@
                 html += '</div>';
                 content.innerHTML = html;
             } else if (view === 'settings') {
+                const mode = data.settings?.mode || 'hybrid';
                 content.innerHTML = `
                     <div class="section">
                         <h2 class="section-title">設定</h2>
                         <div class="card">
                             <div style="margin-bottom:12px;">
-                                <span style="color:#8b949e;">GAS API</span>
-                                <p style="font-size:0.625rem;word-break:break-all;margin-top:4px;">${API}</p>
+                                <span style="color:#8b949e;">UIバージョン</span>
+                                <p style="margin-top:4px;">高速版 v2</p>
                             </div>
-                            <button class="btn" onclick="location.href='index.html'">📱 通常版UIに切替</button>
+                        </div>
+                        
+                        <div class="card" style="margin-top:12px;">
+                            <div style="margin-bottom:12px;">
+                                <span style="color:#8b949e;">通知モード</span>
+                                <p style="margin-top:4px;font-size:0.75rem;">現在: ${mode === 'web_only' ? 'Webのみ' : 'LINE + Web'}</p>
+                            </div>
+                            <div style="display:flex;gap:8px;">
+                                <button class="btn" style="flex:1;${mode === 'web_only' ? 'opacity:0.5;' : ''}" onclick="setNotificationMode('web_only')">
+                                    📱 Webのみ
+                                </button>
+                                <button class="btn" style="flex:1;${mode === 'hybrid' ? 'opacity:0.5;' : ''}" onclick="setNotificationMode('hybrid')">
+                                    🔔 LINE+Web
+                                </button>
+                            </div>
+                        </div>
+                        
+                        <div class="card" style="margin-top:12px;">
+                            <button class="btn" style="width:100%;" onclick="location.href='index.html'">📱 通常版UIに切替</button>
                         </div>
                     </div>`;
             }
@@ -405,6 +424,21 @@
                 }
             } catch (e) {
                 alert('❌ エラー');
+            }
+        }
+
+        async function setNotificationMode(mode) {
+            try {
+                const res = await fetch(API + '?action=setNotificationMode&mode=' + mode);
+                const result = await res.json();
+                if (result.success) {
+                    alert('✅ 通知モードを「' + (mode === 'web_only' ? 'Webのみ' : 'LINE+Web') + '」に変更しました');
+                    await loadData();
+                } else {
+                    alert('❌ 変更失敗: ' + (result.error || ''));
+                }
+            } catch (e) {
+                alert('❌ エラー: ' + e.message);
             }
         }
     </script>
