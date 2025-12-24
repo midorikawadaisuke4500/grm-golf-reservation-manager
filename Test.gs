@@ -1,53 +1,77 @@
 /**
  * ========================================
- * GRM テスト関数モジュール
+ * GRM テスト関数モジュール v2
  * ========================================
  * 
- * テスト手順:
- * Step 1: testStep1_SendRequestMail()  → 予約依頼メール送信
- * Step 2: (手動で返信メールを送信)
- * Step 3a: testStep3a_ParseEmail()     → メール解析のみ
- * Step 3b: testStep3b_RegisterToDB()   → スプレッドシート登録のみ
- * Step 3c: testStep3c_RegisterToCalendar() → カレンダー登録のみ
- * Step 3d: testStep3d_SendNotification() → 通知送信のみ
- * Step 4: testStep4_FullProcess()      → 全ステップ一括実行
+ * 正しい本番フロー:
+ * 1. メール解析 → 2. DB登録 → 3. LINE通知（承認待ち）
+ * → [管理者承認] → 4. カレンダー登録 → 5. 完了通知
  * 
- * クリーンアップ:
- * testCleanup() → テストデータ削除
+ * 【個別テスト】
+ * test_Step1_SendMail       → 予約依頼メール送信
+ * test_Step2_ParseEmail     → メール解析
+ * test_Step3_RegisterDB     → DB登録
+ * test_Step4_NotifyLine     → LINE通知（承認待ち）
+ * test_Step5_ApproveCalendar → カレンダー登録（承認後）
  * 
- * 設定:
- * testShowStatus() → 現在の設定・状態を表示
+ * 【一連動作テスト】
+ * test_FullFlow_Manual      → 解析→DB→LINE（承認待ち）
+ * test_FullFlow_AutoApprove → 全自動テスト
+ * 
+ * 【マージテスト】
+ * test_Merge_Setup          → マージテスト準備
+ * test_Merge_Detect         → マージ検出
+ * test_Merge_Execute        → マージ実行
+ * test_Merge_Cleanup        → マージ削除
+ * 
+ * 【ユーティリティ】
+ * test_Cleanup              → テストデータ削除
+ * test_ShowStatus           → 状態確認
+ * test_Help                 → ヘルプ表示
  */
 
 // ========================================
 // Step 1: 予約依頼メール送信
 // ========================================
-function testStep1_SendRequestMail() {
+function test_Step1_SendMail() {
   console.log('========================================');
   console.log('  Step 1: 予約依頼メール送信');
   console.log('========================================');
   
-  try {
-    const result = GRMMail.sendReservationRequest();
-    console.log('✅ メール送信完了');
-    console.log('ThreadID: ' + result.threadId);
-    console.log('');
-    console.log('📋 次のステップ:');
-    console.log('  1. テスト用の返信メールを送信してください');
-    console.log('  2. testStep3a_ParseEmail() を実行');
-    return result;
-  } catch (e) {
-    console.log('❌ エラー: ' + e.message);
-    return { error: e.message };
+  // テストモード確認
+  if (!Config.isTestMode()) {
+    console.log('⚠️ 本番モードです！中止しました。');
+    console.log('Configシートで IS_TEST_MODE を true に設定してください');
+    return { success: false, error: '本番モードのため中止' };
   }
+  
+  console.log('');
+  console.log('📤 予約依頼メールを送信中...');
+  console.log('送信先: ' + Config.getGolfClubEmail());
+  
+  const result = GRMMail.sendReservationRequest();
+  
+  if (result.success) {
+    console.log('✅ メール送信成功！');
+    console.log('対象月: ' + result.targetMonth);
+    console.log('');
+    console.log('📧 ' + Config.getGolfClubEmail() + ' のメールボックスを確認してください');
+    console.log('');
+    console.log('📋 次のステップ: test_Step2_ParseEmail');
+  } else {
+    console.log('❌ メール送信失敗: ' + result.error);
+  }
+  
+  console.log('========================================');
+  return result;
 }
 
 // ========================================
-// Step 3a: メール解析のみ
+// Step 2: メール解析
 // ========================================
-function testStep3a_ParseEmail() {
+function test_Step2_ParseEmail() {
   console.log('========================================');
-  console.log('  Step 3a: メール解析');
+  console.log('  Step 2: メール解析');
   console.log('========================================');
   
   const props = PropertiesService.getScriptProperties();
@@ -77,15 +101,14 @@ function testStep3a_ParseEmail() {
     
     const replyMessage = messages[messages.length - 1];
     console.log('返信メール日時: ' + replyMessage.getDate());
-    console.log('送信者: ' + replyMessage.getFrom());
     
     const body = replyMessage.getPlainBody();
     console.log('');
-    console.log('--- メール本文（先頭500文字）---');
-    console.log(body.substring(0, 500));
+    console.log('--- メール本文（先頭300文字）---');
+    console.log(body.substring(0, 300));
     console.log('---');
     
-    // 解析実行
+    // 解析実行（年月自動推測）
     const reservations = parseEmailReply(body);
     
     console.log('');
@@ -97,7 +120,7 @@ function testStep3a_ParseEmail() {
     // 結果を保存
     props.setProperty('PENDING_RESERVATIONS', JSON.stringify(reservations));
     console.log('');
-    console.log('📋 次のステップ: testStep3b_RegisterToDB()');
+    console.log('📋 次のステップ: test_Step3_RegisterDB');
     
     return reservations;
   } catch (e) {
@@ -107,18 +130,18 @@ function testStep3a_ParseEmail() {
 }
 
 // ========================================
-// Step 3b: スプレッドシート登録のみ
+// Step 3: スプレッドシート登録
 // ========================================
-function testStep3b_RegisterToDB() {
+function test_Step3_RegisterDB() {
   console.log('========================================');
-  console.log('  Step 3b: スプレッドシート登録');
+  console.log('  Step 3: スプレッドシート登録');
   console.log('========================================');
   
   const props = PropertiesService.getScriptProperties();
   const pendingData = props.getProperty('PENDING_RESERVATIONS');
   
   if (!pendingData) {
-    console.log('❌ 保留中の予約データがありません。先にStep 3aを実行してください。');
+    console.log('❌ 保留中の予約データがありません。先にStep 2を実行してください。');
     return null;
   }
   
@@ -126,11 +149,12 @@ function testStep3b_RegisterToDB() {
   console.log('登録対象: ' + reservations.length + '件');
   
   const ss = SpreadsheetApp.getActiveSpreadsheet();
-  const sheet = ss.getSheetByName('Reservation_DB');
+  let sheet = ss.getSheetByName('Reservation_DB');
   
   if (!sheet) {
-    console.log('❌ Reservation_DBシートが見つかりません');
-    return null;
+    sheet = ss.insertSheet('Reservation_DB');
+    sheet.getRange('A1:L1').setValues([['ID', 'メール受信日', '予約日', '曜日', 'コース', '時間', 'ステータス', 'カレンダーEventID', '最終更新日時', '信頼度', 'メールID', '備考']]);
+    sheet.getRange('A1:L1').setFontWeight('bold').setBackground('#4a4a4a').setFontColor('#ffffff');
   }
   
   const registeredIds = [];
@@ -140,23 +164,20 @@ function testStep3b_RegisterToDB() {
     // 日付バリデーションと補正
     let dateStr = res.date;
     
-    // undefinedまたは不正な形式のチェック
     if (!dateStr || typeof dateStr !== 'string' || !dateStr.match(/^\d{4}-\d{2}-\d{2}$/)) {
       console.log('⚠️ 不正な日付形式をスキップ: ' + dateStr);
-      return; // この予約をスキップ
+      return;
     }
     
-    // 日付から年月日を抽出
     const dateParts = dateStr.split('-');
     let year = parseInt(dateParts[0]);
     const month = dateParts[1];
     const day = dateParts[2];
     
-    // 2001年などの不正な年を補正（現在年または翌年に）
+    // 2001年などの不正な年を補正
     if (year < currentYear || year > currentYear + 2) {
       const parsedMonth = parseInt(month);
       const currentMonth = new Date().getMonth() + 1;
-      // 予約月が現在月より先なら今年、そうでなければ翌年
       if (parsedMonth > currentMonth) {
         year = currentYear;
       } else {
@@ -186,202 +207,165 @@ function testStep3b_RegisterToDB() {
     console.log('✅ 登録: ' + id + ' - ' + dateStr + '（' + res.weekday + '）' + res.time);
   });
   
-  // 登録済みIDを保存
   props.setProperty('REGISTERED_IDS', JSON.stringify(registeredIds));
   
   console.log('');
   console.log('✅ ' + registeredIds.length + '件をスプレッドシートに登録');
-  console.log('📋 次のステップ: testStep3c_RegisterToCalendar()');
+  console.log('📋 次のステップ: test_Step4_NotifyLine');
   
   return registeredIds;
 }
 
 // ========================================
-// Step 3c: カレンダー登録のみ
+// Step 4: LINE通知（承認待ち）
 // ========================================
-function testStep3c_RegisterToCalendar() {
+function test_Step4_NotifyLine() {
   console.log('========================================');
-  console.log('  Step 3c: カレンダー登録');
+  console.log('  Step 4: LINE通知（承認待ち）');
   console.log('========================================');
   
   const props = PropertiesService.getScriptProperties();
-  const registeredIdsData = props.getProperty('REGISTERED_IDS');
+  const registeredIds = props.getProperty('REGISTERED_IDS');
   
-  if (!registeredIdsData) {
-    console.log('❌ 登録済みIDがありません。先にStep 3bを実行してください。');
+  if (!registeredIds) {
+    console.log('❌ 登録済みIDがありません。先にStep 3を実行してください。');
     return null;
   }
   
-  const registeredIds = JSON.parse(registeredIdsData);
-  const calendarId = Config.get('CALENDAR_ID');
-  const calendar = CalendarApp.getCalendarById(calendarId);
-  
-  if (!calendar) {
-    console.log('❌ カレンダーが見つかりません: ' + calendarId);
-    return null;
-  }
-  
-  console.log('カレンダー: ' + calendar.getName());
-  
-  const ss = SpreadsheetApp.getActiveSpreadsheet();
-  const sheet = ss.getSheetByName('Reservation_DB');
-  const data = sheet.getDataRange().getValues();
-  
-  let calendarCount = 0;
-  
-  for (let i = 1; i < data.length; i++) {
-    const id = String(data[i][0]);
-    
-    if (data[i][6] === 'pending' && registeredIds.indexOf(id) !== -1) {
-      try {
-        const dateStr = data[i][2];
-        let timeStr = data[i][5];
-        
-        let hour, minute;
-        if (timeStr instanceof Date) {
-          hour = timeStr.getHours();
-          minute = timeStr.getMinutes();
-          timeStr = String(hour).padStart(2, '0') + ':' + String(minute).padStart(2, '0');
-        } else {
-          const timeParts = String(timeStr).split(':');
-          hour = parseInt(timeParts[0]);
-          minute = parseInt(timeParts[1]);
-        }
-        
-        const eventDate = new Date(dateStr);
-        eventDate.setHours(hour, minute, 0, 0);
-        const endDate = new Date(eventDate.getTime() + 5 * 60 * 60 * 1000);
-        
-        const title = '【外出】ゴルフ 麻倉 ' + timeStr + ' 残数3';
-        const event = calendar.createEvent(title, eventDate, endDate, {
-          location: '麻倉ゴルフ倶楽部',
-          description: '[System:GolfMgr] ID:' + id
-        });
-        
-        // EventIDを保存
-        sheet.getRange(i + 1, 8).setValue(event.getId());
-        sheet.getRange(i + 1, 7).setValue('confirmed');
-        
-        calendarCount++;
-        console.log('✅ カレンダー登録: ' + eventDate.toLocaleDateString() + ' ' + timeStr);
-      } catch (e) {
-        console.log('⚠️ エラー: ' + e.message);
-      }
-    }
-  }
-  
-  console.log('');
-  console.log('✅ ' + calendarCount + '件をカレンダーに登録');
-  console.log('📋 次のステップ: testStep3d_SendNotification()');
-  
-  return calendarCount;
-}
-
-// ========================================
-// Step 3d: 通知送信のみ
-// ========================================
-function testStep3d_SendNotification() {
-  console.log('========================================');
-  console.log('  Step 3d: 通知送信');
-  console.log('========================================');
-  
-  const props = PropertiesService.getScriptProperties();
-  const pendingData = props.getProperty('PENDING_RESERVATIONS');
-  
-  if (!pendingData) {
-    console.log('❌ 予約データがありません');
-    return null;
-  }
-  
-  const reservations = JSON.parse(pendingData);
-  const now = new Date();
-  const targetYear = now.getFullYear() + 1;
-  const targetMonth = now.getMonth() + 1;
-  
-  const notificationText = 
-    '📅 ' + targetYear + '年' + targetMonth + '月の予約を登録しました\n\n' +
-    '✅ 登録件数: ' + reservations.length + '件\n\n' +
-    reservations.slice(0, 5).map(function(res, i) {
-      return (i + 1) + '. ' + res.date + '（' + res.weekday + '）' + res.time;
-    }).join('\n');
+  const ids = JSON.parse(registeredIds);
+  console.log('通知対象: ' + ids.length + '件');
   
   // LINE通知
   if (isLineEnabled()) {
-    try {
-      LINE.sendTextMessage(notificationText);
+    const message = '📅 新しい予約が登録されました\n\n' +
+                    '✅ 登録件数: ' + ids.length + '件\n\n' +
+                    '👆 WEB画面またはこのメッセージで承認してください';
+    
+    const result = LINE.sendTextMessage(message);
+    
+    if (result.success) {
       console.log('✅ LINE通知送信完了');
-    } catch (e) {
-      console.log('⚠️ LINE通知エラー: ' + e.message);
+    } else {
+      console.log('❌ LINE通知エラー: ' + result.error);
     }
   } else {
     console.log('🔕 LINE通知はスキップ（無効設定）');
   }
   
-  // メール通知
-  try {
-    const adminEmail = Config.get('ADMIN_EMAIL');
-    if (adminEmail) {
-      MailApp.sendEmail({
-        to: adminEmail,
-        subject: '【GRM】' + targetYear + '年' + targetMonth + '月 登録完了（' + reservations.length + '件）',
-        body: notificationText
-      });
-      console.log('✅ メール通知送信完了: ' + adminEmail);
-    }
-  } catch (e) {
-    console.log('⚠️ メール通知エラー: ' + e.message);
-  }
-  
   console.log('');
-  console.log('✅ 通知送信完了');
+  console.log('📋 次のステップ: WEB UIまたはLINEで承認 → カレンダー登録');
+  console.log('または: test_Step5_ApproveCalendar（自動承認）');
   
-  return true;
+  return { success: true, count: ids.length };
 }
 
 // ========================================
-// Step 4: 全ステップ一括実行
+// Step 5: カレンダー登録（承認後）
 // ========================================
-function testStep4_FullProcess() {
+function test_Step5_ApproveCalendar() {
   console.log('========================================');
-  console.log('  Step 4: 全ステップ一括実行');
+  console.log('  Step 5: カレンダー登録（承認）');
   console.log('========================================');
   
-  // Step 3a
-  const reservations = testStep3a_ParseEmail();
+  const result = approveAllReservationsToCalendar();
+  
+  if (result.success) {
+    console.log('✅ ' + result.count + '件をカレンダーに登録');
+    
+    // 完了通知
+    if (isLineEnabled()) {
+      LINE.sendTextMessage('✅ ' + result.count + '件の予約をカレンダーに登録しました');
+    }
+  } else {
+    console.log('❌ カレンダー登録エラー: ' + result.error);
+  }
+  
+  console.log('');
+  console.log('✅ 全ステップ完了！');
+  
+  return result;
+}
+
+// ========================================
+// 一連動作テスト: 手動承認版
+// ========================================
+function test_FullFlow_Manual() {
+  console.log('========================================');
+  console.log('  一連動作テスト（手動承認版）');
+  console.log('========================================');
+  console.log('');
+  console.log('このテストは以下を実行します:');
+  console.log('  1. メール解析');
+  console.log('  2. DB登録');
+  console.log('  3. LINE通知（承認待ち）');
+  console.log('');
+  console.log('カレンダー登録は管理者承認後に行われます。');
+  console.log('========================================');
+  
+  // Step 2: メール解析
+  console.log('');
+  console.log('【Step 2】メール解析...');
+  const reservations = test_Step2_ParseEmail();
   if (!reservations || reservations.length === 0) {
     console.log('❌ 解析失敗または予約なし');
-    return;
+    return { success: false };
   }
   
+  // Step 3: DB登録
   console.log('');
-  
-  // Step 3b
-  const ids = testStep3b_RegisterToDB();
+  console.log('【Step 3】DB登録...');
+  const ids = test_Step3_RegisterDB();
   if (!ids) {
-    console.log('❌ スプレッドシート登録失敗');
-    return;
+    console.log('❌ DB登録失敗');
+    return { success: false };
   }
   
+  // Step 4: LINE通知
   console.log('');
-  
-  // Step 3c
-  testStep3c_RegisterToCalendar();
-  
-  console.log('');
-  
-  // Step 3d
-  testStep3d_SendNotification();
+  console.log('【Step 4】LINE通知...');
+  test_Step4_NotifyLine();
   
   console.log('');
   console.log('========================================');
-  console.log('  ✅ 全ステップ完了');
+  console.log('  ✅ 一連動作テスト完了（承認待ち）');
   console.log('========================================');
+  console.log('');
+  console.log('次のステップ: WEB UIまたはLINEで承認してください');
+  
+  return { success: true, count: ids.length };
 }
 
 // ========================================
-// クリーンアップ: テストデータ削除
+// 一連動作テスト: 全自動版
 // ========================================
-function testCleanup() {
+function test_FullFlow_AutoApprove() {
+  console.log('========================================');
+  console.log('  一連動作テスト（全自動版）');
+  console.log('========================================');
+  
+  // Step 2-4
+  const manualResult = test_FullFlow_Manual();
+  if (!manualResult.success) {
+    return manualResult;
+  }
+  
+  // Step 5: カレンダー登録
+  console.log('');
+  console.log('【Step 5】カレンダー登録（自動承認）...');
+  test_Step5_ApproveCalendar();
+  
+  console.log('');
+  console.log('========================================');
+  console.log('  ✅ 全自動テスト完了');
+  console.log('========================================');
+  
+  return { success: true };
+}
+
+// ========================================
+// テストデータ削除
+// ========================================
+function test_Cleanup() {
   console.log('========================================');
   console.log('  テストデータ削除');
   console.log('========================================');
@@ -391,6 +375,7 @@ function testCleanup() {
   
   let sheetDeleteCount = 0;
   let calendarDeleteCount = 0;
+  const currentYear = new Date().getFullYear();
   
   // スプレッドシートからテストデータを削除
   const ss = SpreadsheetApp.getActiveSpreadsheet();
@@ -403,13 +388,14 @@ function testCleanup() {
       const id = String(data[i][0]);
       const dateVal = data[i][2];
       
-      // 削除対象: res-2026-, test, res-undefin-, または2001年の日付
-      let shouldDelete = id.startsWith('res-2026-') || 
+      // 削除対象: res-テスト用, res-undefin-, または不正な日付
+      let shouldDelete = id.startsWith('res-' + (currentYear + 1) + '-') || 
+                         id.startsWith('res-' + (currentYear + 2) + '-') ||
                          id.startsWith('test') || 
                          id.startsWith('res-undefin');
       
-      // 2001年の不正な日付データも削除
-      if (dateVal instanceof Date && dateVal.getFullYear() === 2001) {
+      // 2001年などの不正な日付データも削除
+      if (dateVal instanceof Date && (dateVal.getFullYear() < currentYear || dateVal.getFullYear() > currentYear + 3)) {
         shouldDelete = true;
       }
       
@@ -435,26 +421,6 @@ function testCleanup() {
     }
   }
   
-  // カレンダーからテスト/不正データのみ削除（本番データは保護）
-  if (calendar) {
-    // 2001年の不正データを削除
-    const invalidStartDate = new Date('2001-01-01');
-    const invalidEndDate = new Date('2001-12-31');
-    const invalidEvents = calendar.getEvents(invalidStartDate, invalidEndDate);
-    
-    invalidEvents.forEach(function(event) {
-      const desc = event.getDescription() || '';
-      if (desc.includes('[System:GolfMgr]') || desc.includes('ID:res-undefin')) {
-        event.deleteEvent();
-        calendarDeleteCount++;
-        console.log('🗑️ カレンダー削除（2001年不正データ）: ' + event.getTitle());
-      }
-    });
-    
-    // 明確にテストデータとマークされたイベントのみ削除
-    // 本番データ（2025-2027年）は description に [System:GolfMgr] ID:res-undefin がない限り削除しない
-  }
-  
   // 保存データもクリア
   const props = PropertiesService.getScriptProperties();
   props.deleteProperty('PENDING_RESERVATIONS');
@@ -469,7 +435,7 @@ function testCleanup() {
 // ========================================
 // 状態確認
 // ========================================
-function testShowStatus() {
+function test_ShowStatus() {
   console.log('========================================');
   console.log('  現在の状態');
   console.log('========================================');
@@ -484,6 +450,7 @@ function testShowStatus() {
   console.log('');
   console.log('🔔 通知設定:');
   console.log('  LINE: ' + (isLineEnabled() ? '有効' : '無効'));
+  console.log('  モード: ' + (PropertiesService.getScriptProperties().getProperty('NOTIFICATION_MODE') || 'hybrid'));
   
   console.log('');
   console.log('📋 保留データ:');
@@ -500,7 +467,8 @@ function testShowStatus() {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   const sheet = ss.getSheetByName('Reservation_DB');
   if (sheet) {
-    console.log('  Reservation_DB: ' + (sheet.getLastRow() - 1) + '件');
+    const lastRow = sheet.getLastRow();
+    console.log('  Reservation_DB: ' + (lastRow > 1 ? lastRow - 1 : 0) + '件');
   }
   
   console.log('');
@@ -517,26 +485,52 @@ function testShowStatus() {
 // ========================================
 // ヘルプ
 // ========================================
-function testHelp() {
+function test_Help() {
   console.log('========================================');
-  console.log('  GRM テスト関数一覧');
+  console.log('  GRM テスト関数一覧 v2');
   console.log('========================================');
   console.log('');
-  console.log('【ステップ実行】');
-  console.log('  testStep1_SendRequestMail()  - 予約依頼メール送信');
-  console.log('  testStep3a_ParseEmail()      - メール解析のみ');
-  console.log('  testStep3b_RegisterToDB()    - スプレッドシート登録のみ');
-  console.log('  testStep3c_RegisterToCalendar() - カレンダー登録のみ');
-  console.log('  testStep3d_SendNotification() - 通知送信のみ');
-  console.log('  testStep4_FullProcess()      - 全ステップ一括');
+  console.log('【本番フロー】');
+  console.log('  1. メール解析 → 2. DB登録 → 3. LINE通知（承認待ち）');
+  console.log('  → [管理者承認] → 4. カレンダー登録');
   console.log('');
-  console.log('【管理】');
-  console.log('  testCleanup()                - テストデータ削除');
-  console.log('  testShowStatus()             - 現在の状態確認');
-  console.log('  deleteAllTriggers()          - 全トリガー削除');
+  console.log('【個別テスト】');
+  console.log('  test_Step1_SendMail       - 予約依頼メール送信');
+  console.log('  test_Step2_ParseEmail     - メール解析');
+  console.log('  test_Step3_RegisterDB     - DB登録');
+  console.log('  test_Step4_NotifyLine     - LINE通知（承認待ち）');
+  console.log('  test_Step5_ApproveCalendar - カレンダー登録（承認後）');
   console.log('');
-  console.log('【設定】');
-  console.log('  enableLineNotification()     - LINE通知有効');
-  console.log('  disableLineNotification()    - LINE通知無効');
+  console.log('【一連動作テスト】');
+  console.log('  test_FullFlow_Manual      - 解析→DB→LINE（承認待ちで停止）');
+  console.log('  test_FullFlow_AutoApprove - 全自動テスト');
+  console.log('');
+  console.log('【ユーティリティ】');
+  console.log('  test_Cleanup              - テストデータ削除');
+  console.log('  test_ShowStatus           - 状態確認');
+  console.log('  test_Help                 - このヘルプ');
+  console.log('');
+  console.log('【通知設定】');
+  console.log('  enableLineNotification    - LINE通知有効');
+  console.log('  disableLineNotification   - LINE通知無効');
   console.log('========================================');
+}
+
+// ========================================
+// マージテスト（後から追加予定）
+// ========================================
+function test_Merge_Setup() {
+  console.log('マージテスト: 準備（未実装）');
+}
+
+function test_Merge_Detect() {
+  console.log('マージテスト: 検出（未実装）');
+}
+
+function test_Merge_Execute() {
+  console.log('マージテスト: 実行（未実装）');
+}
+
+function test_Merge_Cleanup() {
+  console.log('マージテスト: 削除（未実装）');
 }
