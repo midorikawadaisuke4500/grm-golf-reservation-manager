@@ -1290,6 +1290,46 @@ function parseEmailReply(emailBody, year, month) {
   const reservations = [];
   
   // ========================================
+  // Step 0: 年月の自動推測（引数がない場合）
+  // ========================================
+  const now = new Date();
+  const currentYear = now.getFullYear();
+  const currentMonth = now.getMonth() + 1;
+  
+  // メール本文から月を検出
+  let detectedMonth = null;
+  const monthMatch = emailBody.match(/(\d{1,2})月/);
+  if (monthMatch) {
+    detectedMonth = parseInt(monthMatch[1]);
+  }
+  
+  // 年が指定されていない場合
+  if (!year) {
+    // 検出した月または現在月を使用
+    const targetMonth = detectedMonth || currentMonth;
+    
+    // 年の推測ロジック：
+    // - 検出した月が現在月より先なら今年（例：現在4月、予約5月→今年）
+    // - 検出した月が現在月以下なら翌年（例：現在12月、予約1月→翌年）
+    if (targetMonth > currentMonth) {
+      year = currentYear;
+    } else if (targetMonth <= currentMonth && currentMonth >= 10) {
+      // 10月以降で、予約月が小さい場合は翌年
+      year = currentYear + 1;
+    } else {
+      year = currentYear;
+    }
+    
+    console.log('📅 年を自動推測:', year);
+  }
+  
+  // 月が指定されていない場合
+  if (!month) {
+    month = detectedMonth || currentMonth;
+    console.log('📅 月を自動推測:', month);
+  }
+  
+  // ========================================
   // Step 1: 包括的な正規化
   // ========================================
   let normalized = emailBody

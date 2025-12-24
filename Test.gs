@@ -405,20 +405,24 @@ function testCleanup() {
     }
   }
   
-  // カレンダーからこのシステムで生成したイベントを削除
+  // カレンダーからテスト/不正データのみ削除（本番データは保護）
   if (calendar) {
-    const startDate = new Date('2026-01-01');
-    const endDate = new Date('2026-12-31');
-    const events = calendar.getEvents(startDate, endDate);
+    // 2001年の不正データを削除
+    const invalidStartDate = new Date('2001-01-01');
+    const invalidEndDate = new Date('2001-12-31');
+    const invalidEvents = calendar.getEvents(invalidStartDate, invalidEndDate);
     
-    events.forEach(function(event) {
+    invalidEvents.forEach(function(event) {
       const desc = event.getDescription() || '';
-      if (desc.includes('[System:GolfMgr] ID:')) {
+      if (desc.includes('[System:GolfMgr]') || desc.includes('ID:res-undefin')) {
         event.deleteEvent();
         calendarDeleteCount++;
-        console.log('🗑️ カレンダー削除: ' + event.getTitle());
+        console.log('🗑️ カレンダー削除（2001年不正データ）: ' + event.getTitle());
       }
     });
+    
+    // 明確にテストデータとマークされたイベントのみ削除
+    // 本番データ（2025-2027年）は description に [System:GolfMgr] ID:res-undefin がない限り削除しない
   }
   
   // 保存データもクリア
