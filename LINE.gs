@@ -622,8 +622,22 @@ function handleMessage(event) {
     GRMLogger.info('LINE', '登録コマンド受信');
     var savedData = PropertiesService.getScriptProperties().getProperty('PENDING_RESERVATIONS');
     
+    // PENDING_RESERVATIONSがない場合、既存のpending予約をカレンダー登録
     if (!savedData) {
-      LINE.sendTextMessage('登録待ちの予約データがありません');
+      try {
+        // 既存のpending予約をカレンダーに登録
+        var result = approveAllReservationsToCalendar();
+        if (result.success && result.count > 0) {
+          LINE.sendTextMessage('✅ ' + result.count + '件の予約をカレンダーに登録しました！');
+        } else if (result.success && result.count === 0) {
+          LINE.sendTextMessage('登録待ちの予約データがありません');
+        } else {
+          LINE.sendTextMessage('登録エラー: ' + (result.error || '不明なエラー'));
+        }
+      } catch (e) {
+        LINE.sendTextMessage('登録エラー: ' + e.message);
+        GRMLogger.error('LINE', 'カレンダー登録エラー', { error: e.message });
+      }
       return;
     }
     
@@ -641,6 +655,7 @@ function handleMessage(event) {
       var today = new Date().toISOString().split('T')[0];
       var now = new Date().toISOString();
       var calendarRegistered = 0;
+      var sheetRegistered = 0;
       
       // 既存IDを取得して重複をチェック
       var existingData = sheet.getDataRange().getValues();
@@ -695,14 +710,28 @@ function handleMessage(event) {
         // スプレッドシート登録（カレンダー登録済みなら confirmed）
         var status = eventId ? 'confirmed' : 'pending';
         sheet.appendRow([id, today, res.date, res.weekday, res.course, res.time, status, eventId, now, '100', 'line-register', 'LINE経由登録']);
+        sheetRegistered++;
       }
       
       PropertiesService.getScriptProperties().deleteProperty('PENDING_RESERVATIONS');
       PropertiesService.getScriptProperties().setProperty('GRM_MONITORING_ACTIVE', 'false');
       
-      var message = reservations.length + '件の予約を登録しました\n' + calendarRegistered + '件をGoogleカレンダーに登録しました';
-      LINE.sendTextMessage(message);
-      GRMLogger.info('LINE', 'LINE経由で一括登録完了', { sheet: reservations.length, calendar: calendarRegistered });
+      // 既存のpending予約もカレンダー登録
+      if (sheetRegistered === 0) {
+        // 新規登録がなかった場合は既存のpendingをカレンダー登録
+        var approveResult = approveAllReservationsToCalendar();
+        if (approveResult.success && approveResult.count > 0) {
+          calendarRegistered = approveResult.count;
+        }
+      }
+      
+      var message = '';
+      if (sheetRegistered > 0) {
+        message = sheetRegistered + '件をスプレッドシートに登録\n';
+      }
+      message += calendarRegistered + '件をGoogleカレンダーに登録しました';
+      LINE.sendTextMessage('✅ ' + message);
+      GRMLogger.info('LINE', 'LINE経由で一括登録完了', { sheet: sheetRegistered, calendar: calendarRegistered });
       
     } catch (e) {
       LINE.sendTextMessage('登録エラー: ' + e.message);
