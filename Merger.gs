@@ -169,20 +169,38 @@ const Merger = {
       const calendarId = Config.get('CALENDAR_ID');
       const calendar = CalendarApp.getCalendarById(calendarId);
       
-      // 1. 親タイトルに「＜マージ済み＞」を付加
+      // 1. 親イベントを取得（タイトルは変更しない）
       const parentEvent = parentCandidate.event || calendar.getEventById(parentCandidate.id);
-      if (parentEvent) {
-        const newParentTitle = `${this.MERGED_TAG}${parentEvent.getTitle()}`;
-        parentEvent.setTitle(newParentTitle);
-        GRMLogger.info('Stage6', '親タイトル更新', { newTitle: newParentTitle });
-      }
+      const parentDescription = parentEvent ? (parentEvent.getDescription() || '') : '';
       
-      // 2. 子タイトルに「＜マージ済み＞」を付加
+      GRMLogger.info('Stage6', '親イベント取得', { 
+        parentTitle: parentEvent ? parentEvent.getTitle() : 'なし',
+        hasDescription: !!parentDescription
+      });
+      
+      // 2. 子カレンダーイベントのメモに親メモを追加
       const childCalendarEvent = calendar.getEventById(childEvent.calendarEventId || childEvent.id);
       if (childCalendarEvent) {
+        const childDescription = childCalendarEvent.getDescription() || '';
+        
+        // 子メモ + 親メモ を結合
+        let newDescription = childDescription;
+        if (parentDescription) {
+          newDescription = childDescription + 
+            '\n\n--- 親予定からのメモ ---\n' + 
+            parentDescription;
+        }
+        
+        childCalendarEvent.setDescription(newDescription);
+        
+        // 子タイトルに「＜マージ済み＞」を付加
         const newChildTitle = `${this.MERGED_TAG}${childCalendarEvent.getTitle()}`;
         childCalendarEvent.setTitle(newChildTitle);
-        GRMLogger.info('Stage6', '子タイトル更新', { newTitle: newChildTitle });
+        
+        GRMLogger.info('Stage6', '子イベント更新', { 
+          newTitle: newChildTitle,
+          descriptionUpdated: true
+        });
       }
       
       // 3. マージログを記録
