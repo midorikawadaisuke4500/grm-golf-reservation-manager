@@ -245,6 +245,7 @@
     <nav class="nav">
         <button class="nav-item active" onclick="showView('home')"><span class="nav-icon">🏠</span>ホーム</button>
         <button class="nav-item" onclick="showView('calendar')"><span class="nav-icon">📅</span>予約</button>
+        <button class="nav-item" onclick="showView('merge')"><span class="nav-icon">🔀</span>マージ</button>
         <button class="nav-item" onclick="showView('settings')"><span class="nav-icon">⚙️</span>設定</button>
     </nav>
 
@@ -281,7 +282,7 @@
         function showView(view) {
             currentView = view;
             document.querySelectorAll('.nav-item').forEach((n, i) => {
-                n.classList.toggle('active', ['home', 'calendar', 'settings'][i] === view);
+                n.classList.toggle('active', ['home', 'calendar', 'merge', 'settings'][i] === view);
             });
             const content = document.getElementById('content');
 
@@ -325,6 +326,9 @@
 
                 html += '</div>';
                 content.innerHTML = html;
+            } else if (view === 'merge') {
+                content.innerHTML = '<div class="loading">🔄 マージ候補を取得中...</div>';
+                loadMergeCandidates();
             } else if (view === 'settings') {
                 const mode = data.settings?.mode || 'hybrid';
                 content.innerHTML = `
@@ -434,9 +438,141 @@
                 if (result.success) {
                     alert('✅ 通知モードを「' + (mode === 'web_only' ? 'Webのみ' : 'LINE+Web') + '」に変更しました');
                     await loadData();
-                    showView('settings'); // UIを更新
+                    showView('settings');
                 } else {
                     alert('❌ 変更失敗: ' + (result.error || ''));
+                }
+            } catch (e) {
+                alert('❌ エラー: ' + e.message);
+            }
+        }
+
+        // ========================================
+        // マージ機能
+        // ========================================
+        let mergeData = { candidates: [], history: [] };
+
+        async function loadMergeCandidates() {
+            try {
+                const res = await fetch(API + '?action=getMergeCandidates');
+                mergeData = await res.json();
+                renderMergeView();
+            } catch (e) {
+                document.getElementById('content').innerHTML = '<div class="empty">❌ マージ候補の取得に失敗</div>';
+            }
+        }
+
+        function renderMergeView() {
+            const candidates = mergeData.candidates || [];
+            const history = mergeData.history || [];
+            let html = '<div class="section">';
+
+            // スタッツ
+            html += `
+                <div class="stats" style="padding:0;margin-bottom:16px;">
+                    <div class="stat" style="grid-column: span 2;">
+                        <div class="stat-value yellow">${candidates.length}</div>
+                        <div class="stat-label">マージ待ち</div>
+                    </div>
+                    <div class="stat" style="grid-column: span 2;">
+                        <div class="stat-value green">${history.length}</div>
+                        <div class="stat-label">マージ済み</div>
+                    </div>
+                </div>`;
+
+            // マージ待ち
+            if (candidates.length > 0) {
+                html += `<h2 class="section-title" style="color:#d29922;">⚡ マージ待ち (${candidates.length}件)
+                    ${candidates.length > 1 ? '<button class="btn btn-all" onclick="mergeAll()">✅ 一括マージ</button>' : ''}
+                </h2>`;
+                candidates.forEach(m => { html += renderMergeCard(m); });
+            } else {
+                html += `
+                    <div class="empty">
+                        <div style="font-size:48px;margin-bottom:8px;">✅</div>
+                        <p>マージ待ちなし</p>
+                        <p style="font-size:0.75rem;color:#8b949e;">すべての予定がマージ済みです</p>
+                    </div>`;
+            }
+
+            // マージ履歴
+            if (history.length > 0) {
+                html += `<h2 class="section-title" style="color:#8b949e;margin-top:20px;">📋 マージ履歴</h2>`;
+                history.slice(0, 5).forEach(h => {
+                    html += `
+                        <div class="card" style="padding:12px;">
+                            <div style="display:flex;justify-content:space-between;align-items:center;">
+                                <div>
+                                    <div style="font-weight:600;font-size:0.875rem;">${h.parentTitle || '親予定'}</div>
+                                    <div style="font-size:0.625rem;color:#8b949e;">${h.date} • スコア: ${h.score}</div>
+                                </div>
+                                <span class="badge badge-confirmed">済</span>
+                            </div>
+                        </div>`;
+                });
+            }
+
+            html += '</div>';
+            document.getElementById('content').innerHTML = html;
+        }
+
+        function renderMergeCard(merge) {
+            const parent = merge.parent || {};
+            const children = merge.children || [];
+            return `
+                <div class="card">
+                    <div class="card-header">
+                        <span class="date">${merge.date}</span>
+                        <span class="badge badge-pending">${children.length}件の子予定</span>
+                    </div>
+                    
+                    <div style="background:#0d1117;border-radius:6px;padding:10px;border-left:3px solid #238636;margin-bottom:6px;">
+                        <div style="font-size:0.625rem;color:#238636;font-weight:700;">親</div>
+                        <div style="font-size:0.875rem;font-weight:600;">${parent.title || '親予定'}</div>
+                        <div style="font-size:0.625rem;color:#8b949e;">${parent.time || ''}</div>
+                    </div>
+                    
+                    <div style="text-align:center;color:#8b949e;font-size:0.75rem;padding:4px 0;">⬇️ マージ</div>
+                    
+                    ${children.map(child => `
+                        <div style="background:#0d1117;border-radius:6px;padding:10px;border-left:3px solid #d29922;margin-bottom:6px;">
+                            <div style="font-size:0.625rem;color:#d29922;font-weight:700;">子</div>
+                            <div style="font-size:0.875rem;font-weight:600;">${child.title || '子予定'}</div>
+                            <div style="font-size:0.625rem;color:#8b949e;">${child.time || ''}</div>
+                        </div>
+                    `).join('')}
+                    
+                    <button class="btn" style="width:100%;margin-top:8px;" onclick="executeMerge('${merge.date}')">✅ マージを実行</button>
+                </div>`;
+        }
+
+        async function executeMerge(date) {
+            if (!confirm('この日付の予定をマージしますか？')) return;
+            try {
+                const res = await fetch(API + '?action=executeMerge&date=' + encodeURIComponent(date));
+                const result = await res.json();
+                if (result.success) {
+                    alert('✅ マージが完了しました');
+                    loadMergeCandidates();
+                } else {
+                    alert('❌ マージに失敗: ' + (result.error || ''));
+                }
+            } catch (e) {
+                alert('❌ エラー: ' + e.message);
+            }
+        }
+
+        async function mergeAll() {
+            const count = mergeData.candidates.length;
+            if (!confirm(count + '件のマージ待ちをすべてマージしますか？')) return;
+            try {
+                const res = await fetch(API + '?action=executeMergeAll');
+                const result = await res.json();
+                if (result.success) {
+                    alert('✅ ' + (result.count || count) + '件のマージが完了しました');
+                    loadMergeCandidates();
+                } else {
+                    alert('❌ マージに失敗: ' + (result.error || ''));
                 }
             } catch (e) {
                 alert('❌ エラー: ' + e.message);
