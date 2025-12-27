@@ -494,7 +494,7 @@
         }
 
         async function approve(id, btn) {
-            if (!id) return alert('❌ ID不正');
+            if (!id) return console.error('ID不正');
             btn.disabled = true;
             btn.textContent = '処理中...';
             try {
@@ -504,12 +504,12 @@
                     // 無音で完了（alertなし）
                     await loadData();
                 } else {
-                    alert('❌ 失敗: ' + (result.error || ''));
+                    console.error('失敗:', result.error);
                     btn.disabled = false;
                     btn.textContent = '✅ 承認';
                 }
             } catch (e) {
-                alert('❌ エラー: ' + e.message);
+                console.error('エラー:', e.message);
                 btn.disabled = false;
                 btn.textContent = '✅ 承認';
             }
@@ -525,10 +525,10 @@
                     // 無音で完了（alertなし）
                     await loadData();
                 } else {
-                    alert('❌ 失敗: ' + (result.error || ''));
+                    console.error('失敗:', result.error);
                 }
             } catch (e) {
-                alert('❌ エラー');
+                console.error('エラー');
             }
         }
 
@@ -537,14 +537,14 @@
                 const res = await fetch(API + '?action=setNotificationMode&mode=' + mode);
                 const result = await res.json();
                 if (result.success) {
-                    alert('✅ 通知モードを「' + (mode === 'web_only' ? 'Webのみ' : 'LINE+Web') + '」に変更しました');
+                    // 無音で完了
                     await loadData();
                     showView('settings');
                 } else {
-                    alert('❌ 変更失敗: ' + (result.error || ''));
+                    console.error('変更失敗:', result.error);
                 }
             } catch (e) {
-                alert('❌ エラー: ' + e.message);
+                console.error('エラー:', e.message);
             }
         }
 
@@ -663,10 +663,10 @@
                     // 無音で完了（alertなし）
                     loadMergeCandidates();
                 } else {
-                    alert('❌ マージに失敗: ' + (result.error || ''));
+                    console.error('マージに失敗:', result.error);
                 }
             } catch (e) {
-                alert('❌ エラー: ' + e.message);
+                console.error('エラー:', e.message);
             } finally {
                 isMerging = false;
             }
@@ -683,10 +683,10 @@
                     // 無音で完了（alertなし）
                     loadMergeCandidates();
                 } else {
-                    alert('❌ マージに失敗: ' + (result.error || ''));
+                    console.error('マージに失敗:', result.error);
                 }
             } catch (e) {
-                alert('❌ エラー: ' + e.message);
+                console.error('エラー:', e.message);
             }
         }
     </script>

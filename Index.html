@@ -893,63 +893,43 @@
                     if (result.success) {
                         this.notificationMode = mode;
                         this.renderView('settings');
-                        alert(mode === 'web' ? 'LINE通知を無効にしました' : 'LINE通知を有効にしました');
-                    } else {
-                        alert('設定の変更に失敗しました');
                     }
                 } catch (e) {
                     console.error('Failed to set notification mode:', e);
-                    alert('設定の変更に失敗しました');
                 }
             },
 
             async testNotification() {
-                alert('LINE通知テストはGASエディタから実行してください');
+                console.log('LINE通知テストはGASエディタから実行してください');
             },
 
             async approveOne(reservationId) {
                 console.log('approveOne called with ID:', reservationId);
 
-                // reservationIdのバリデーション
                 if (!reservationId || reservationId === 'undefined') {
-                    alert('❌ 予約IDが取得できませんでした');
-                    return;
-                }
-
-                const result = window.confirm('この予約をカレンダーに登録しますか？\nID: ' + reservationId);
-                if (!result) {
-                    console.log('User cancelled');
+                    console.error('予約IDが取得できませんでした');
                     return;
                 }
 
                 try {
                     const baseUrl = '<?= ScriptApp.getService().getUrl() ?>';
-                    console.log('Calling API:', baseUrl + '?action=approveReservation&id=' + reservationId);
                     const response = await fetch(baseUrl + '?action=approveReservation&id=' + reservationId);
                     const apiResult = await response.json();
-                    console.log('API result:', apiResult);
 
                     if (apiResult.success) {
-                        alert('✅ カレンダーに登録しました');
                         await this.loadData();
                         this.renderView('calendar');
                     } else {
-                        alert('❌ 登録に失敗しました: ' + (apiResult.error || ''));
+                        console.error('登録に失敗:', apiResult.error);
                     }
                 } catch (e) {
                     console.error('Failed to approve:', e);
-                    alert('❌ エラーが発生しました: ' + e.message);
                 }
             },
 
             async approveAll() {
                 const pending = this.reservations.filter(r => r.status === 'pending');
-                if (pending.length === 0) {
-                    alert('承認待ちの予約がありません');
-                    return;
-                }
-
-                if (!confirm(pending.length + '件の予約を一括でカレンダーに登録しますか？')) return;
+                if (pending.length === 0) return;
 
                 try {
                     const baseUrl = '<?= ScriptApp.getService().getUrl() ?>';
@@ -957,15 +937,13 @@
                     const result = await response.json();
 
                     if (result.success) {
-                        alert('✅ ' + result.count + '件をカレンダーに登録しました');
                         await this.loadData();
                         this.renderView('calendar');
                     } else {
-                        alert('❌ 登録に失敗しました: ' + (result.error || ''));
+                        console.error('登録に失敗:', result.error);
                     }
                 } catch (e) {
                     console.error('Failed to approve all:', e);
-                    alert('❌ エラーが発生しました');
                 }
             },
 
@@ -978,7 +956,7 @@
             renderMerge() {
                 const pending = this.mergeCandidates || [];
                 const history = this.mergeHistory || [];
-                
+
                 return `
                 <div class="animate-fade-in">
                     <div class="page-header">
@@ -1008,10 +986,10 @@
                     const baseUrl = '<?= ScriptApp.getService().getUrl() ?>';
                     const response = await fetch(baseUrl + '?action=getMergeCandidates');
                     const data = await response.json();
-                    
+
                     this.mergeCandidates = data.candidates || [];
                     this.mergeHistory = data.history || [];
-                    
+
                     this.renderMergeContent();
                 } catch (e) {
                     console.error('Failed to load merge candidates:', e);
@@ -1026,11 +1004,11 @@
                 const pending = this.mergeCandidates || [];
                 const history = this.mergeHistory || [];
                 const container = document.getElementById('mergeContent');
-                
+
                 if (!container) return;
-                
+
                 let html = '';
-                
+
                 // マージ待ち
                 if (pending.length > 0) {
                     html += `
@@ -1049,7 +1027,7 @@
                         <p style="color: var(--text-muted); font-size: var(--font-size-sm);">すべての予定がマージ済みです</p>
                     </div>`;
                 }
-                
+
                 // マージ履歴
                 if (history.length > 0) {
                     html += `
@@ -1068,9 +1046,9 @@
                         `).join('')}
                     </div>`;
                 }
-                
+
                 container.innerHTML = html;
-                
+
                 // stats も更新
                 document.querySelectorAll('.stat-value.accent').forEach(el => { el.textContent = pending.length; });
                 document.querySelectorAll('.stat-value.success').forEach(el => { if (el.closest('.stats-grid')) el.textContent = history.length; });
@@ -1079,7 +1057,7 @@
             renderMergeCard(merge) {
                 const parent = merge.parent || {};
                 const children = merge.children || [];
-                
+
                 return `
                 <div class="card" style="margin-bottom: var(--space-md);">
                     <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: var(--space-md);">
@@ -1123,43 +1101,36 @@
             },
 
             async executeMerge(date) {
-                if (!confirm('この日付の予定をマージしますか？')) return;
-                
                 try {
                     const baseUrl = '<?= ScriptApp.getService().getUrl() ?>';
                     const response = await fetch(baseUrl + '?action=executeMerge&date=' + encodeURIComponent(date));
                     const result = await response.json();
-                    
+
                     if (result.success) {
-                        alert('✅ マージが完了しました');
                         await this.loadMergeCandidates();
                     } else {
-                        alert('❌ マージに失敗しました: ' + (result.error || ''));
+                        console.error('マージに失敗:', result.error);
                     }
                 } catch (e) {
                     console.error('Failed to execute merge:', e);
-                    alert('❌ エラーが発生しました');
                 }
             },
 
             async mergeAll() {
                 const count = this.mergeCandidates.length;
-                if (!confirm(count + '件のマージ待ち予定をすべてマージしますか？')) return;
-                
+
                 try {
                     const baseUrl = '<?= ScriptApp.getService().getUrl() ?>';
                     const response = await fetch(baseUrl + '?action=executeMergeAll');
                     const result = await response.json();
-                    
+
                     if (result.success) {
-                        alert('✅ ' + (result.count || count) + '件のマージが完了しました');
                         await this.loadMergeCandidates();
                     } else {
-                        alert('❌ マージに失敗しました: ' + (result.error || ''));
+                        console.error('マージに失敗:', result.error);
                     }
                 } catch (e) {
                     console.error('Failed to merge all:', e);
-                    alert('❌ エラーが発生しました');
                 }
             }
         };

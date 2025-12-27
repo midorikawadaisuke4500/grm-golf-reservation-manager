@@ -892,18 +892,15 @@
                     if (result.success) {
                         this.notificationMode = mode;
                         this.renderView('settings');
-                        alert(mode === 'web' ? 'LINE通知を無効にしました' : 'LINE通知を有効にしました');
-                    } else {
-                        alert('設定の変更に失敗しました');
                     }
                 } catch (e) {
                     console.error('Failed to set notification mode:', e);
-                    alert('設定の変更に失敗しました');
                 }
             },
 
             async testNotification() {
-                alert('LINE通知テストはGASエディタから実行してください');
+                // 無音で完了
+                console.log('LINE通知テストはGASエディタから実行してください');
             },
 
             async approveOne(reservationId) {
@@ -911,7 +908,7 @@
 
                 // reservationIdのバリデーション
                 if (!reservationId || reservationId === 'undefined') {
-                    alert('❌ 予約IDが取得できませんでした');
+                    console.error('予約IDが取得できませんでした');
                     return;
                 }
 
@@ -928,19 +925,17 @@
                     console.log('API result:', apiResult);
 
                     if (apiResult.success) {
-                        alert('✅ カレンダーに登録しました');
-                        // キャッシュをクリアして再読み込み
+                        // 無音で完了 - キャッシュをクリアして再読み込み
                         Cache.clear();
                         await this.loadData();
-                        this.renderView('calendar', true); // アニメーションスキップ
+                        this.renderView('calendar', true);
                     } else {
-                        alert('❌ 登録に失敗しました: ' + (apiResult.error || ''));
+                        console.error('登録に失敗:', apiResult.error);
                         button.disabled = false;
                         button.textContent = '✅ 承認';
                     }
                 } catch (e) {
                     console.error('Failed to approve:', e);
-                    alert('❌ エラーが発生しました: ' + e.message);
                     button.disabled = false;
                     button.textContent = '✅ 承認';
                 }
@@ -949,11 +944,8 @@
             async approveAll() {
                 const pending = this.reservations.filter(r => r.status === 'pending');
                 if (pending.length === 0) {
-                    alert('承認待ちの予約がありません');
                     return;
                 }
-
-                if (!confirm(pending.length + '件の予約を一括でカレンダーに登録しますか？')) return;
 
                 try {
                     const baseUrl = 'https://script.google.com/macros/s/AKfycbwk35HLUGvwIlP_W0AtBH3wbDbYw_YpC7JVtTdRnLWI62r2raz6HdMUNyMxD5uFlQ8/exec';
@@ -961,15 +953,14 @@
                     const result = await response.json();
 
                     if (result.success) {
-                        alert('✅ ' + result.count + '件をカレンダーに登録しました');
+                        // 無音で完了
                         await this.loadData();
-                        this.renderView('calendar', true); // アニメーションスキップ
+                        this.renderView('calendar', true);
                     } else {
-                        alert('❌ 登録に失敗しました: ' + (result.error || ''));
+                        console.error('登録に失敗:', result.error);
                     }
                 } catch (e) {
                     console.error('Failed to approve all:', e);
-                    alert('❌ エラーが発生しました');
                 }
             }
         };

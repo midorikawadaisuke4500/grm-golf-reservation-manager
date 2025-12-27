@@ -7,7 +7,7 @@
 
 const LINE = {
   /**
-   * プッシュメッセージを送信
+   * プッシュメッセージを送信（トリガー起動時など、replyTokenがない場合）
    * @param {string} userId - LINE ユーザーID
    * @param {Array} messages - メッセージ配列
    */
@@ -41,6 +41,46 @@ const LINE = {
   },
 
   /**
+   * リプライメッセージを送信（Webhook応答時、replyTokenがある場合）
+   * ※ 無料・Reply APIはPush APIと異なりカウントされない
+   * @param {string} replyToken - LINEから受け取ったreplyToken
+   * @param {Array} messages - メッセージ配列
+   */
+  replyMessage(replyToken, messages) {
+    const accessToken = Config.get('LINE_ACCESS_TOKEN');
+    if (!accessToken) {
+      GRMLogger.error('LINE', 'アクセストークン未設定');
+      return { success: false, error: 'LINE_ACCESS_TOKEN not configured' };
+    }
+
+    if (!replyToken) {
+      GRMLogger.warn('LINE', 'replyTokenなし、pushにフォールバック');
+      return this.notifyAdmin(messages);
+    }
+
+    try {
+      const response = UrlFetchApp.fetch('https://api.line.me/v2/bot/message/reply', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${accessToken}`
+        },
+        payload: JSON.stringify({
+          replyToken: replyToken,
+          messages: messages
+        })
+      });
+
+      GRMLogger.info('LINE', 'リプライメッセージ送信成功');
+      return { success: true };
+
+    } catch (e) {
+      GRMLogger.error('LINE', 'リプライメッセージ送信エラー', { error: e.message });
+      return { success: false, error: e.message };
+    }
+  },
+
+  /**
    * 管理者にプッシュ通知
    */
   notifyAdmin(messages) {
@@ -55,6 +95,133 @@ const LINE = {
   // ============================================
   // メッセージテンプレート
   // ============================================
+
+  /**
+   * 予約一覧通知（複数予約を一括表示）
+   * @param {Array} reservations - 予約配列
+   */
+  sendReservationListNotification(reservations) {
+    if (!reservations || reservations.length === 0) {
+      return this.notifyAdmin([{
+        type: 'text',
+        text: '📋 新しい予約はありません'
+      }]);
+    }
+
+    // 予約を状態別にカウント
+    const confirmed = reservations.filter(r => r.status === 'confirmed').length;
+    const pending = reservations.filter(r => r.status === 'pending').length;
+
+    // 予約リストを作成（最大10件）
+    const listItems = reservations.slice(0, 10).map(r => {
+      const date = new Date(r.date);
+      const dateStr = `${date.getMonth() + 1}/${date.getDate()}`;
+      const weekday = r.weekday || '';
+      const statusIcon = r.status === 'confirmed' ? '✅' : '⏳';
+      const statusText = r.status === 'confirmed' ? '確定' : '承認待ち';
+      
+      return {
+        type: 'box',
+        layout: 'horizontal',
+        margin: 'md',
+        contents: [
+          {
+            type: 'text',
+            text: statusIcon,
+            flex: 0,
+            size: 'sm'
+          },
+          {
+            type: 'text',
+            text: `${dateStr}（${weekday}）${r.time} ${r.course}`,
+            flex: 4,
+            size: 'sm',
+            margin: 'sm'
+          },
+          {
+            type: 'text',
+            text: statusText,
+            flex: 2,
+            size: 'xs',
+            align: 'end',
+            color: r.status === 'confirmed' ? '#2E7D32' : '#FF6F00'
+          }
+        ]
+      };
+    });
+
+    const messages = [{
+      type: 'flex',
+      altText: `【予約一覧】${reservations.length}件の予約`,
+      contents: {
+        type: 'bubble',
+        header: {
+          type: 'box',
+          layout: 'vertical',
+          backgroundColor: '#2E7D32',
+          paddingAll: 'lg',
+          contents: [{
+            type: 'text',
+            text: '📋 予約一覧',
+            weight: 'bold',
+            size: 'lg',
+            color: '#FFFFFF'
+          }]
+        },
+        body: {
+          type: 'box',
+          layout: 'vertical',
+          contents: [
+            {
+              type: 'text',
+              text: `全${reservations.length}件（確定: ${confirmed}件 / 承認待ち: ${pending}件）`,
+              size: 'sm',
+              color: '#666666',
+              margin: 'md'
+            },
+            {
+              type: 'separator',
+              margin: 'lg'
+            },
+            {
+              type: 'box',
+              layout: 'vertical',
+              margin: 'lg',
+              contents: listItems
+            }
+          ]
+        },
+        footer: pending > 0 ? {
+          type: 'box',
+          layout: 'horizontal',
+          spacing: 'xxl',
+          contents: [
+            {
+              type: 'button',
+              style: 'primary',
+              color: '#2E7D32',
+              action: {
+                type: 'postback',
+                label: '✓ 一括承認',
+                data: 'action=approve_all'
+              }
+            },
+            {
+              type: 'button',
+              style: 'secondary',
+              action: {
+                type: 'uri',
+                label: '📱 詳細を見る',
+                uri: Config.get('WEB_APP_URL') || 'https://example.com'
+              }
+            }
+          ]
+        } : undefined
+      }
+    }];
+
+    return this.notifyAdmin(messages);
+  },
 
   /**
    * 予約確認通知（Stage 3）
@@ -110,7 +277,7 @@ const LINE = {
         footer: {
           type: 'box',
           layout: 'horizontal',
-          spacing: 'sm',
+          spacing: 'xxl',
           contents: [
             {
               type: 'button',
@@ -260,7 +427,7 @@ const LINE = {
         footer: {
           type: 'box',
           layout: 'horizontal',
-          spacing: 'sm',
+          spacing: 'xxl',
           contents: [
             {
               type: 'button',
@@ -367,7 +534,7 @@ const LINE = {
         footer: {
           type: 'box',
           layout: 'horizontal',
-          spacing: 'sm',
+          spacing: 'xxl',
           contents: [
             {
               type: 'button',
@@ -386,6 +553,142 @@ const LINE = {
                 type: 'postback',
                 label: 'スキップ',
                 data: `action=skip_merge&date=${mergeInfo.date}`
+              }
+            }
+          ]
+        }
+      }
+    }];
+
+    return this.notifyAdmin(messages);
+  },
+
+  /**
+   * マージ一覧通知（複数日のマージ候補をまとめて表示）
+   * @param {Array} mergeCandidates - マージ候補配列 [{date, childCount, parentTitle}]
+   */
+  sendMergeListNotification(mergeCandidates) {
+    if (!mergeCandidates || mergeCandidates.length === 0) {
+      return this.notifyAdmin([{
+        type: 'text',
+        text: '🔗 マージ待ちの予定はありません'
+      }]);
+    }
+
+    const totalCount = mergeCandidates.reduce((sum, c) => sum + (c.childCount || 1), 0);
+
+    // マージ候補リストを作成（最大10件）
+    const listItems = mergeCandidates.slice(0, 10).map(c => {
+      const date = new Date(c.date);
+      const dateStr = `${date.getMonth() + 1}/${date.getDate()}`;
+      const weekdays = ['日', '月', '火', '水', '木', '金', '土'];
+      const weekday = weekdays[date.getDay()];
+      
+      return {
+        type: 'box',
+        layout: 'horizontal',
+        margin: 'md',
+        contents: [
+          {
+            type: 'text',
+            text: '📅',
+            flex: 0,
+            size: 'sm'
+          },
+          {
+            type: 'text',
+            text: `${dateStr}（${weekday}）`,
+            flex: 2,
+            size: 'sm',
+            margin: 'sm'
+          },
+          {
+            type: 'text',
+            text: `${c.childCount || 1}件の子予定`,
+            flex: 3,
+            size: 'xs',
+            align: 'end',
+            color: '#1565C0'
+          }
+        ]
+      };
+    });
+
+    // 10件以上ある場合は省略表示
+    if (mergeCandidates.length > 10) {
+      listItems.push({
+        type: 'text',
+        text: `... 他${mergeCandidates.length - 10}日分`,
+        size: 'xs',
+        color: '#999999',
+        margin: 'md',
+        align: 'center'
+      });
+    }
+
+    const messages = [{
+      type: 'flex',
+      altText: `【マージ候補】${mergeCandidates.length}日分・${totalCount}件`,
+      contents: {
+        type: 'bubble',
+        header: {
+          type: 'box',
+          layout: 'vertical',
+          backgroundColor: '#E3F2FD',
+          paddingAll: 'lg',
+          contents: [{
+            type: 'text',
+            text: '🔗 マージ候補一覧',
+            weight: 'bold',
+            size: 'lg',
+            color: '#1565C0'
+          }]
+        },
+        body: {
+          type: 'box',
+          layout: 'vertical',
+          contents: [
+            {
+              type: 'text',
+              text: `全${totalCount}件のマージ待ち（${mergeCandidates.length}日分）`,
+              size: 'sm',
+              color: '#666666',
+              margin: 'md'
+            },
+            {
+              type: 'separator',
+              margin: 'lg'
+            },
+            {
+              type: 'box',
+              layout: 'vertical',
+              margin: 'lg',
+              contents: listItems
+            }
+          ]
+        },
+        footer: {
+          type: 'box',
+          layout: 'horizontal',
+          spacing: 'xxl',
+          contents: [
+            {
+              type: 'button',
+              style: 'primary',
+              color: '#1565C0',
+              action: {
+                type: 'postback',
+                label: '🔗 一括マージ',
+                data: 'action=merge_all'
+              }
+            },
+            {
+              type: 'button',
+              style: 'secondary',
+              action: {
+                type: 'uri',
+                label: '📱 詳細を見る',
+                uri: Config.get('WEB_APP_URL') || 'https://example.com'
               }
             }
           ]
@@ -548,8 +851,10 @@ function handleLineEvent(event) {
 
 /**
  * Postback処理（ボタン押下）
+ * ※ Reply APIを使用してメッセージ数を節約
  */
 function handlePostback(event) {
+  const replyToken = event.replyToken;
   const data = new URLSearchParams(event.postback.data);
   const action = data.get('action');
   const id = data.get('id');
@@ -557,63 +862,135 @@ function handlePostback(event) {
   
   GRMLogger.info('LINE', 'Postback処理', { action, id, date });
   
+  // Reply用メッセージを作成
+  let replyMessages = [];
+  
   switch (action) {
     case 'confirm':
       // 予約承認
       const confirmResult = BrainManager.confirmReservation(id);
       if (confirmResult.success) {
-        LINE.sendCompletionNotification('予約承認完了', 'カレンダーに登録しました');
+        replyMessages = [{
+          type: 'text',
+          text: '✅ 予約承認完了\nカレンダーに登録しました'
+        }];
       } else {
-        LINE.sendErrorNotification('予約承認エラー', confirmResult.error);
+        replyMessages = [{
+          type: 'text',
+          text: '❌ 予約承認エラー\n' + (confirmResult.error || '')
+        }];
       }
       break;
       
     case 'cancel':
       // キャンセル確認
-      LINE.sendTextMessage('キャンセルを処理しています...');
       const cancelResult = BrainManager.cancelReservation(id);
       if (cancelResult.success) {
-        LINE.sendCompletionNotification('キャンセル完了', 'ゴルフ場にキャンセルメールを送信しました');
+        replyMessages = [{
+          type: 'text',
+          text: '✅ キャンセル完了\nゴルフ場にキャンセルメールを送信しました'
+        }];
       } else {
-        LINE.sendErrorNotification('キャンセルエラー', cancelResult.error);
+        replyMessages = [{
+          type: 'text',
+          text: '❌ キャンセルエラー\n' + (cancelResult.error || '')
+        }];
       }
       break;
       
     case 'proceed':
       // 実施確定
-      LINE.sendCompletionNotification('実施確定', '当日楽しんできてください！🏌️');
+      replyMessages = [{
+        type: 'text',
+        text: '✅ 実施確定\n当日楽しんできてください！🏌️'
+      }];
       break;
       
     case 'merge':
       // マージ実行
       const mergeResult = Merger.executeMerge(date);
       if (mergeResult.success) {
-        LINE.sendCompletionNotification('マージ完了', mergeResult.message);
+        replyMessages = [{
+          type: 'text',
+          text: '✅ マージ完了\n' + (mergeResult.message || '')
+        }];
       } else {
-        LINE.sendErrorNotification('マージエラー', mergeResult.message);
+        replyMessages = [{
+          type: 'text',
+          text: '❌ マージエラー\n' + (mergeResult.message || '')
+        }];
       }
       break;
       
     case 'skip_merge':
-      LINE.sendTextMessage('マージをスキップしました');
+      replyMessages = [{
+        type: 'text',
+        text: 'マージをスキップしました'
+      }];
       break;
       
     case 'edit':
-      LINE.sendTextMessage('修正機能は現在Web画面をご利用ください\n' + Config.get('WEB_APP_URL'));
+      replyMessages = [{
+        type: 'text',
+        text: '修正機能は現在Web画面をご利用ください\n' + (Config.get('WEB_APP_URL') || '')
+      }];
+      break;
+      
+    case 'approve_all':
+      // 一括承認
+      const approveResult = approveAllReservationsToCalendar();
+      if (approveResult.success) {
+        replyMessages = [{
+          type: 'text',
+          text: '✅ 一括承認完了\n' + approveResult.count + '件をカレンダーに登録しました'
+        }];
+      } else {
+        replyMessages = [{
+          type: 'text',
+          text: '❌ 一括承認エラー\n' + (approveResult.error || '')
+        }];
+      }
+      break;
+      
+    case 'merge_all':
+      // 一括マージ
+      const mergeAllResult = executeAllMerges();
+      if (mergeAllResult.success) {
+        replyMessages = [{
+          type: 'text',
+          text: '✅ 一括マージ完了\n' + mergeAllResult.count + '件をマージしました'
+        }];
+      } else {
+        replyMessages = [{
+          type: 'text',
+          text: '❌ 一括マージエラー\n' + (mergeAllResult.error || '')
+        }];
+      }
       break;
       
     default:
       GRMLogger.warn('LINE', '未知のアクション', { action });
+      replyMessages = [{
+        type: 'text',
+        text: '不明なアクションです'
+      }];
+  }
+  
+  // Reply APIで応答（無料）
+  if (replyMessages.length > 0) {
+    LINE.replyMessage(replyToken, replyMessages);
   }
 }
 
 
 /**
  * テキストメッセージ処理（スプレッドシート＋カレンダー一括登録対応）
+ * ※ Reply APIを使用してメッセージ数を節約
  */
 function handleMessage(event) {
   if (event.message.type !== 'text') return;
   
+  var replyToken = event.replyToken;
   var text = event.message.text.trim();
   var textLower = text.toLowerCase();
   
@@ -628,14 +1005,14 @@ function handleMessage(event) {
         // 既存のpending予約をカレンダーに登録
         var result = approveAllReservationsToCalendar();
         if (result.success && result.count > 0) {
-          LINE.sendTextMessage('✅ ' + result.count + '件の予約をカレンダーに登録しました！');
+          LINE.replyMessage(replyToken, [{ type: 'text', text: '✅ ' + result.count + '件の予約をカレンダーに登録しました！' }]);
         } else if (result.success && result.count === 0) {
-          LINE.sendTextMessage('登録待ちの予約データがありません');
+          LINE.replyMessage(replyToken, [{ type: 'text', text: '登録待ちの予約データがありません' }]);
         } else {
-          LINE.sendTextMessage('登録エラー: ' + (result.error || '不明なエラー'));
+          LINE.replyMessage(replyToken, [{ type: 'text', text: '登録エラー: ' + (result.error || '不明なエラー') }]);
         }
       } catch (e) {
-        LINE.sendTextMessage('登録エラー: ' + e.message);
+        LINE.replyMessage(replyToken, [{ type: 'text', text: '登録エラー: ' + e.message }]);
         GRMLogger.error('LINE', 'カレンダー登録エラー', { error: e.message });
       }
       return;
@@ -730,11 +1107,11 @@ function handleMessage(event) {
         message = sheetRegistered + '件をスプレッドシートに登録\n';
       }
       message += calendarRegistered + '件をGoogleカレンダーに登録しました';
-      LINE.sendTextMessage('✅ ' + message);
+      LINE.replyMessage(replyToken, [{ type: 'text', text: '✅ ' + message }]);
       GRMLogger.info('LINE', 'LINE経由で一括登録完了', { sheet: sheetRegistered, calendar: calendarRegistered });
       
     } catch (e) {
-      LINE.sendTextMessage('登録エラー: ' + e.message);
+      LINE.replyMessage(replyToken, [{ type: 'text', text: '登録エラー: ' + e.message }]);
       GRMLogger.error('LINE', '一括登録エラー', { error: e.message });
     }
     return;
@@ -743,20 +1120,20 @@ function handleMessage(event) {
   // 「キャンセル」コマンド
   if (text === 'キャンセル' || textLower === 'cancel') {
     PropertiesService.getScriptProperties().deleteProperty('PENDING_RESERVATIONS');
-    LINE.sendTextMessage('登録待ちデータをキャンセルしました');
+    LINE.replyMessage(replyToken, [{ type: 'text', text: '登録待ちデータをキャンセルしました' }]);
     return;
   }
   
   // 「ステータス」コマンド
   if (text === 'ステータス' || textLower === 'status') {
     var stats = BrainManager.getStats();
-    LINE.sendTextMessage('GRM ステータス\n\n今後の予約: ' + stats.upcoming + '件\n確定済み: ' + stats.confirmed + '件\n承認待ち: ' + stats.pending + '件');
+    LINE.replyMessage(replyToken, [{ type: 'text', text: 'GRM ステータス\n\n今後の予約: ' + stats.upcoming + '件\n確定済み: ' + stats.confirmed + '件\n承認待ち: ' + stats.pending + '件' }]);
     return;
   }
   
   // 「ヘルプ」コマンド
   if (text === 'ヘルプ' || textLower === 'help') {
-    LINE.sendTextMessage('GRM ヘルプ\n\n「登録」- 予約をスプレッドシート＋カレンダーに一括登録\n「キャンセル」- 登録待ちデータを削除\n「ステータス」- 予約状況を確認');
+    LINE.replyMessage(replyToken, [{ type: 'text', text: 'GRM ヘルプ\n\n「登録」- 予約をスプレッドシート＋カレンダーに一括登録\n「キャンセル」- 登録待ちデータを削除\n「ステータス」- 予約状況を確認' }]);
     return;
   }
 }
