@@ -435,6 +435,16 @@
                 </svg>
                 <span>カレンダー</span>
             </button>
+            <button class="nav-item" data-view="merge">
+                <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <circle cx="18" cy="5" r="3"></circle>
+                    <circle cx="6" cy="12" r="3"></circle>
+                    <circle cx="18" cy="19" r="3"></circle>
+                    <line x1="8.59" y1="13.51" x2="15.42" y2="17.49"></line>
+                    <line x1="15.41" y1="6.51" x2="8.59" y2="10.49"></line>
+                </svg>
+                <span>マージ</span>
+            </button>
             <button class="nav-item" data-view="settings">
                 <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                     <circle cx="12" cy="12" r="3"></circle>
@@ -647,6 +657,10 @@
                         break;
                     case 'settings':
                         content.innerHTML = this.renderSettings();
+                        break;
+                    case 'merge':
+                        content.innerHTML = this.renderMerge();
+                        this.loadMergeCandidates();
                         break;
                 }
             },
@@ -951,6 +965,200 @@
                     }
                 } catch (e) {
                     console.error('Failed to approve all:', e);
+                    alert('❌ エラーが発生しました');
+                }
+            },
+
+            // ========================================
+            // マージ機能
+            // ========================================
+            mergeCandidates: [],
+            mergeHistory: [],
+
+            renderMerge() {
+                const pending = this.mergeCandidates || [];
+                const history = this.mergeHistory || [];
+                
+                return `
+                <div class="animate-fade-in">
+                    <div class="page-header">
+                        <h1 class="page-title">予定マージ</h1>
+                        <p class="page-subtitle">親予定と子予定を統合します</p>
+                    </div>
+                    
+                    <div class="stats-grid" style="margin-bottom: var(--space-xl);">
+                        <div class="stat-card">
+                            <div class="stat-value accent">${pending.length}</div>
+                            <div class="stat-label">マージ待ち</div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-value success">${history.length}</div>
+                            <div class="stat-label">マージ済み</div>
+                        </div>
+                    </div>
+                    
+                    <div id="mergeContent">
+                        <div class="loading"><div class="loading-spinner"></div></div>
+                    </div>
+                </div>`;
+            },
+
+            async loadMergeCandidates() {
+                try {
+                    const baseUrl = '<?= ScriptApp.getService().getUrl() ?>';
+                    const response = await fetch(baseUrl + '?action=getMergeCandidates');
+                    const data = await response.json();
+                    
+                    this.mergeCandidates = data.candidates || [];
+                    this.mergeHistory = data.history || [];
+                    
+                    this.renderMergeContent();
+                } catch (e) {
+                    console.error('Failed to load merge candidates:', e);
+                    document.getElementById('mergeContent').innerHTML = `
+                        <div class="card" style="text-align: center; color: var(--text-muted);">
+                            <p>マージ候補の取得に失敗しました</p>
+                        </div>`;
+                }
+            },
+
+            renderMergeContent() {
+                const pending = this.mergeCandidates || [];
+                const history = this.mergeHistory || [];
+                const container = document.getElementById('mergeContent');
+                
+                if (!container) return;
+                
+                let html = '';
+                
+                // マージ待ち
+                if (pending.length > 0) {
+                    html += `
+                    <div class="section">
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: var(--space-md);">
+                            <h3 class="section-title" style="color: var(--accent); margin: 0;">⚡ マージ待ち (${pending.length}件)</h3>
+                            ${pending.length > 1 ? `<button class="btn btn-primary" onclick="App.mergeAll()" style="font-size: var(--font-size-sm); padding: var(--space-xs) var(--space-md);">すべてマージ</button>` : ''}
+                        </div>
+                        ${pending.map(m => this.renderMergeCard(m)).join('')}
+                    </div>`;
+                } else {
+                    html += `
+                    <div class="card" style="text-align: center; padding: var(--space-xl);">
+                        <div style="font-size: 48px; margin-bottom: var(--space-md);">✅</div>
+                        <h4 style="color: var(--text-primary); margin-bottom: var(--space-sm);">マージ待ちなし</h4>
+                        <p style="color: var(--text-muted); font-size: var(--font-size-sm);">すべての予定がマージ済みです</p>
+                    </div>`;
+                }
+                
+                // マージ履歴
+                if (history.length > 0) {
+                    html += `
+                    <div class="section" style="margin-top: var(--space-xl);">
+                        <h3 class="section-title">📋 マージ履歴</h3>
+                        ${history.slice(0, 5).map(h => `
+                            <div class="card" style="padding: var(--space-md); margin-bottom: var(--space-sm);">
+                                <div style="display: flex; justify-content: space-between; align-items: center;">
+                                    <div>
+                                        <div style="font-weight: 600; font-size: var(--font-size-sm);">${h.parentTitle || '親予定'}</div>
+                                        <div style="font-size: var(--font-size-xs); color: var(--text-muted);">${h.date} • スコア: ${h.score}</div>
+                                    </div>
+                                    <span class="badge badge-confirmed">済</span>
+                                </div>
+                            </div>
+                        `).join('')}
+                    </div>`;
+                }
+                
+                container.innerHTML = html;
+                
+                // stats も更新
+                document.querySelectorAll('.stat-value.accent').forEach(el => { el.textContent = pending.length; });
+                document.querySelectorAll('.stat-value.success').forEach(el => { if (el.closest('.stats-grid')) el.textContent = history.length; });
+            },
+
+            renderMergeCard(merge) {
+                const parent = merge.parent || {};
+                const children = merge.children || [];
+                
+                return `
+                <div class="card" style="margin-bottom: var(--space-md);">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: var(--space-md);">
+                        <span style="font-weight: 600;">${merge.date}</span>
+                        <span class="badge badge-pending">${children.length}件の子予定</span>
+                    </div>
+                    
+                    <!-- 親イベント -->
+                    <div style="background: var(--bg-tertiary); border-radius: var(--radius-md); padding: var(--space-md); border-left: 3px solid var(--primary); margin-bottom: var(--space-sm);">
+                        <div style="display: flex; align-items: center; gap: var(--space-sm); margin-bottom: var(--space-xs);">
+                            <span style="font-size: var(--font-size-xs); font-weight: 700; padding: 2px 6px; border-radius: var(--radius-sm); background: var(--primary); color: white;">親</span>
+                            <span style="font-weight: 600; font-size: var(--font-size-sm);">${parent.title || '親予定'}</span>
+                        </div>
+                        <div style="font-size: var(--font-size-xs); color: var(--text-muted);">${parent.time || ''}</div>
+                    </div>
+                    
+                    <!-- 矢印 -->
+                    <div style="display: flex; align-items: center; justify-content: center; gap: var(--space-sm); color: var(--text-muted); font-size: var(--font-size-sm); padding: var(--space-sm) 0;">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <line x1="12" y1="5" x2="12" y2="19"></line>
+                            <polyline points="19 12 12 19 5 12"></polyline>
+                        </svg>
+                        <span>マージ</span>
+                    </div>
+                    
+                    <!-- 子イベント -->
+                    ${children.map(child => `
+                        <div style="background: var(--bg-tertiary); border-radius: var(--radius-md); padding: var(--space-md); border-left: 3px solid var(--accent); margin-bottom: var(--space-sm);">
+                            <div style="display: flex; align-items: center; gap: var(--space-sm); margin-bottom: var(--space-xs);">
+                                <span style="font-size: var(--font-size-xs); font-weight: 700; padding: 2px 6px; border-radius: var(--radius-sm); background: var(--accent); color: var(--bg-primary);">子</span>
+                                <span style="font-weight: 600; font-size: var(--font-size-sm);">${child.title || '子予定'}</span>
+                            </div>
+                            <div style="font-size: var(--font-size-xs); color: var(--text-muted);">${child.time || ''}</div>
+                        </div>
+                    `).join('')}
+                    
+                    <button class="btn btn-primary btn-block" style="margin-top: var(--space-md);" onclick="App.executeMerge('${merge.date}')">
+                        ✅ マージを実行
+                    </button>
+                </div>`;
+            },
+
+            async executeMerge(date) {
+                if (!confirm('この日付の予定をマージしますか？')) return;
+                
+                try {
+                    const baseUrl = '<?= ScriptApp.getService().getUrl() ?>';
+                    const response = await fetch(baseUrl + '?action=executeMerge&date=' + encodeURIComponent(date));
+                    const result = await response.json();
+                    
+                    if (result.success) {
+                        alert('✅ マージが完了しました');
+                        await this.loadMergeCandidates();
+                    } else {
+                        alert('❌ マージに失敗しました: ' + (result.error || ''));
+                    }
+                } catch (e) {
+                    console.error('Failed to execute merge:', e);
+                    alert('❌ エラーが発生しました');
+                }
+            },
+
+            async mergeAll() {
+                const count = this.mergeCandidates.length;
+                if (!confirm(count + '件のマージ待ち予定をすべてマージしますか？')) return;
+                
+                try {
+                    const baseUrl = '<?= ScriptApp.getService().getUrl() ?>';
+                    const response = await fetch(baseUrl + '?action=executeMergeAll');
+                    const result = await response.json();
+                    
+                    if (result.success) {
+                        alert('✅ ' + (result.count || count) + '件のマージが完了しました');
+                        await this.loadMergeCandidates();
+                    } else {
+                        alert('❌ マージに失敗しました: ' + (result.error || ''));
+                    }
+                } catch (e) {
+                    console.error('Failed to merge all:', e);
                     alert('❌ エラーが発生しました');
                 }
             }

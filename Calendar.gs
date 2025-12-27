@@ -169,79 +169,94 @@ const GRMCalendar = {
   },
 
   /**
-   * 手動予定（子予定）を検索
-   */
-  findChildEvents(date) {
-    try {
-      const calendarId = Config.get('CALENDAR_ID');
-      const calendar = CalendarApp.getCalendarById(calendarId);
-      
-      const targetDate = new Date(date);
-      const startOfDay = new Date(targetDate);
-      startOfDay.setHours(0, 0, 0, 0);
-      const endOfDay = new Date(targetDate);
-      endOfDay.setHours(23, 59, 59, 999);
-      
-      const allEvents = calendar.getEvents(startOfDay, endOfDay);
-      const childEvents = [];
-      
-      for (const event of allEvents) {
-        const desc = event.getDescription() || '';
-        // システムタグがないイベントは手動追加とみなす
-        if (!desc.includes(this.SYSTEM_TAG)) {
-          childEvents.push({
-            id: event.getId(),
-            title: event.getTitle(),
-            startTime: event.getStartTime(),
-            endTime: event.getEndTime(),
-            description: desc
-          });
-        }
+ * 子予定（GRMシステム登録）を検索
+ */
+findChildEvents(date) {
+  try {
+    const calendarId = Config.get('CALENDAR_ID');
+    const calendar = CalendarApp.getCalendarById(calendarId);
+    
+    const targetDate = new Date(date);
+    const startOfDay = new Date(targetDate);
+    startOfDay.setHours(0, 0, 0, 0);
+    const endOfDay = new Date(targetDate);
+    endOfDay.setHours(23, 59, 59, 999);
+    
+    const allEvents = calendar.getEvents(startOfDay, endOfDay);
+    const childEvents = [];
+    
+    for (const event of allEvents) {
+      const desc = event.getDescription() || '';
+      // システムタグがあるイベントはGRM登録（子予定）
+      if (desc.includes(this.SYSTEM_TAG)) {
+        childEvents.push({
+          id: event.getId(),
+          title: event.getTitle(),
+          startTime: event.getStartTime(),
+          endTime: event.getEndTime(),
+          description: desc
+        });
       }
-      
-      return childEvents;
-      
-    } catch (e) {
-      GRMLogger.error('Stage6', '子予定検索エラー', { error: e.message });
-      return [];
     }
-  },
+    
+    return childEvents;
+    
+  } catch (e) {
+    GRMLogger.error('Stage6', '子予定検索エラー', { error: e.message });
+    return [];
+  }
+},
 
   /**
-   * 親予定（GRMシステム登録）を検索
-   */
-  findParentEvent(date) {
-    try {
-      const calendarId = Config.get('CALENDAR_ID');
-      const calendar = CalendarApp.getCalendarById(calendarId);
+ * 親予定（手動登録）を検索
+ */
+findParentEvent(date) {
+  try {
+    const calendarId = Config.get('CALENDAR_ID');
+    const calendar = CalendarApp.getCalendarById(calendarId);
+    
+    const targetDate = new Date(date);
+    const startOfDay = new Date(targetDate);
+    startOfDay.setHours(0, 0, 0, 0);
+    const endOfDay = new Date(targetDate);
+    endOfDay.setHours(23, 59, 59, 999);
+    
+    const allEvents = calendar.getEvents(startOfDay, endOfDay);
+    
+    // マージ設定を取得
+    const titleKeywords = (Config.get('MERGE_TITLE_KEYWORDS') || 'ゴルフ,麻倉').split(',');
+    const locationKeyword = Config.get('MERGE_LOCATION') || '麻倉ゴルフ倶楽部';
+    
+    for (const event of allEvents) {
+      const desc = event.getDescription() || '';
+      const title = event.getTitle() || '';
+      const location = event.getLocation() || '';
       
-      const targetDate = new Date(date);
-      const startOfDay = new Date(targetDate);
-      startOfDay.setHours(0, 0, 0, 0);
-      const endOfDay = new Date(targetDate);
-      endOfDay.setHours(23, 59, 59, 999);
-      
-      const allEvents = calendar.getEvents(startOfDay, endOfDay);
-      
-      for (const event of allEvents) {
-        const desc = event.getDescription() || '';
-        if (desc.includes(this.SYSTEM_TAG)) {
+      // システムタグがないイベントが親候補
+      if (!desc.includes(this.SYSTEM_TAG)) {
+        // タイトルまたは場所でゴルフ関連をチェック
+        const matchesTitle = titleKeywords.some(kw => title.includes(kw));
+        const matchesLocation = location.includes(locationKeyword);
+        
+        if (matchesTitle || matchesLocation) {
           return {
             id: event.getId(),
-            title: event.getTitle(),
+            title: title,
             startTime: event.getStartTime(),
             endTime: event.getEndTime(),
             description: desc,
-            event: event // 後続処理用
+            location: location,
+            event: event
           };
         }
       }
-      
-      return null;
-      
-    } catch (e) {
-      GRMLogger.error('Stage6', '親予定検索エラー', { error: e.message });
-      return null;
     }
+    
+    return null;
+    
+  } catch (e) {
+    GRMLogger.error('Stage6', '親予定検索エラー', { error: e.message });
+    return null;
   }
+}
 };

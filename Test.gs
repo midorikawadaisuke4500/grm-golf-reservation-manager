@@ -414,12 +414,14 @@ function test_Cleanup() {
     for (let i = data.length - 1; i >= 1; i--) {
       const id = String(data[i][0]);
       const dateVal = data[i][2];
+      const status = String(data[i][6]);
       
-      // 削除対象: res-テスト用, res-undefin-, または不正な日付
+      // 削除対象: res-テスト用, res-undefin-, 不正な日付, またはマージ済み
       let shouldDelete = id.startsWith('res-' + (currentYear + 1) + '-') || 
                          id.startsWith('res-' + (currentYear + 2) + '-') ||
                          id.startsWith('test') || 
-                         id.startsWith('res-undefin');
+                         id.startsWith('res-undefin') ||
+                         status === 'merged';
       
       // 2001年などの不正な日付データも削除
       if (dateVal instanceof Date && (dateVal.getFullYear() < currentYear || dateVal.getFullYear() > currentYear + 3)) {
@@ -452,11 +454,25 @@ function test_Cleanup() {
   const props = PropertiesService.getScriptProperties();
   props.deleteProperty('PENDING_RESERVATIONS');
   props.deleteProperty('REGISTERED_IDS');
+  props.deleteProperty('MERGE_CANDIDATES');
+  
+  // Merge_Logシートのデータをクリア
+  let mergeLogDeleteCount = 0;
+  const mergeLogSheet = ss.getSheetByName(Config.SHEET_NAMES.MERGE_LOG);
+  if (mergeLogSheet) {
+    const lastRow = mergeLogSheet.getLastRow();
+    if (lastRow > 1) {
+      mergeLogDeleteCount = lastRow - 1;
+      mergeLogSheet.deleteRows(2, lastRow - 1);
+      console.log('🗑️ Merge_Log: ' + mergeLogDeleteCount + '件削除');
+    }
+  }
   
   console.log('');
   console.log('✅ 削除完了');
   console.log('  スプレッドシート: ' + sheetDeleteCount + '件');
   console.log('  カレンダー: ' + calendarDeleteCount + '件');
+  console.log('  マージログ: ' + mergeLogDeleteCount + '件');
 }
 
 // ========================================

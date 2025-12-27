@@ -22,6 +22,46 @@ const Merger = {
   },
   
   /**
+   * 日付をYYYY/MM/DD形式に変換
+   */
+  formatDateForDisplay(value) {
+    if (!value) return '';
+    if (value instanceof Date) {
+      return Utilities.formatDate(value, 'Asia/Tokyo', 'yyyy/MM/dd');
+    }
+    // 文字列の場合
+    const str = String(value);
+    if (str.includes('T')) {
+      // ISO形式（2026-05-16T15:00:00.000Z）
+      const d = new Date(str);
+      return Utilities.formatDate(d, 'Asia/Tokyo', 'yyyy/MM/dd');
+    }
+    // YYYY-MM-DD形式
+    if (str.match(/^\d{4}-\d{2}-\d{2}$/)) {
+      return str.replace(/-/g, '/');
+    }
+    return str;
+  },
+  
+  /**
+   * 日時をJST形式に変換
+   */
+  formatDateTimeForDisplay(value) {
+    if (!value) return '';
+    if (value instanceof Date) {
+      return Utilities.formatDate(value, 'Asia/Tokyo', 'yyyy/MM/dd HH:mm');
+    }
+    // 文字列の場合
+    const str = String(value);
+    if (str.includes('T')) {
+      // ISO形式
+      const d = new Date(str);
+      return Utilities.formatDate(d, 'Asia/Tokyo', 'yyyy/MM/dd HH:mm');
+    }
+    return str;
+  },
+  
+  /**
    * 親候補をスコアリングして検出
    * @param {string} date - 対象日付 (YYYY-MM-DD)
    * @param {Object} childEvent - 子イベント情報
@@ -193,8 +233,9 @@ const Merger = {
         
         childCalendarEvent.setDescription(newDescription);
         
-        // 子タイトルに「＜マージ済み＞」を付加
-        const newChildTitle = `${this.MERGED_TAG}${childCalendarEvent.getTitle()}`;
+        // 子タイトルを親タイトル + 「＜マージ済み＞」に変更
+        const parentTitle = parentEvent ? parentEvent.getTitle() : '';
+        const newChildTitle = `${this.MERGED_TAG}${parentTitle}`;
         childCalendarEvent.setTitle(newChildTitle);
         
         GRMLogger.info('Stage6', '子イベント更新', { 
@@ -242,15 +283,20 @@ const Merger = {
       
       const mergeId = Utilities.getUuid();
       
+      // JSTでフォーマット
+      const now = new Date();
+      const jstDateTime = Utilities.formatDate(now, 'Asia/Tokyo', 'yyyy-MM-dd HH:mm:ss');
+      const dateStr = childEvent.date || Utilities.formatDate(now, 'Asia/Tokyo', 'yyyy-MM-dd');
+      
       logSheet.appendRow([
         mergeId,
-        childEvent.date || new Date().toISOString().split('T')[0],
+        dateStr,
         childEvent.reservationId || '',
         childEvent.calendarEventId || childEvent.id || '',
         parentCandidate.id,
         parentCandidate.title,
         parentCandidate.score,
-        new Date().toISOString()
+        jstDateTime
       ]);
       
     } catch (e) {
@@ -477,15 +523,15 @@ const Merger = {
       for (let i = data.length - 1; i >= 1 && history.length < limit; i--) {
         const row = data[i];
         history.push({
-          mergeId: row[0],
-          date: row[1],
-          childReservationId: row[2],
-          childEventId: row[3],
-          parentEventId: row[4],
-          parentTitle: row[5],
-          score: row[6],
-          mergedAt: row[7]
-        });
+        mergeId: row[0],
+        date: this.formatDateForDisplay(row[1]),
+        childReservationId: row[2],
+        childEventId: row[3],
+        parentEventId: row[4],
+        parentTitle: row[5],
+        score: row[6],
+        mergedAt: this.formatDateTimeForDisplay(row[7])
+      });
       }
       
       return history;

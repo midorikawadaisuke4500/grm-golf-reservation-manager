@@ -40,7 +40,15 @@ function handleGetRequest(action, params) {
         result = BrainManager.getReservations();
         break;
       case 'getMergeCandidates':
-        result = Merger.detectAllMergeCandidates();
+        result = getMergeCandidatesForUI();
+        break;
+      case 'executeMerge':
+        result = executeMergeByDate(params.date);
+        clearDataCache();
+        break;
+      case 'executeMergeAll':
+        result = executeAllMerges();
+        clearDataCache();
         break;
       case 'getWeather':
         result = Weather.getWeatherForecast(params.date);
@@ -586,6 +594,188 @@ const BrainManager = {
     }
   }
 };
+
+// ========================================
+// マージ機能 WebUI向けAPI
+// ========================================
+
+/**
+ * WebUI用: マージ候補を取得
+ * @returns {Object} { candidates: [...], history: [...] }
+ */
+function getMergeCandidatesForUI() {
+  try {
+    const rawCandidates = Merger.detectAllMergeCandidates();
+    const history = Merger.getMergeHistory(10);
+    
+    // WebUIが期待する形式に変換
+    const candidates = rawCandidates.map(c => ({
+      date: c.date,
+      parent: c.parent ? {
+        id: c.parent.id || '',
+        title: c.parent.title || '親予定',
+        time: c.parent.startTime ? 
+          new Date(c.parent.startTime).toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit' }) : ''
+      } : null,
+      children: (c.children || []).map(child => ({
+        id: child.id || '',
+        title: child.title || '子予定',
+        time: child.startTime ? 
+          new Date(child.startTime).toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit' }) : ''
+      }))
+    })).filter(c => c.parent && c.children.length > 0);
+    
+    return { candidates, history };
+    
+  } catch (e) {
+    GRMLogger.error('API', 'getMergeCandidatesForUI エラー', { error: e.message });
+    return { candidates: [], history: [], error: e.message };
+  }
+}
+
+/**
+ * WebUI用: 指定日付のマージを実行
+ * @param {string} date - YYYY-MM-DD形式
+ * @returns {Object} { success: boolean, ... }
+ */
+function executeMergeByDate(date) {
+  try {
+    if (!date) {
+      return { success: false, error: '日付が指定されていません' };
+    }
+    
+    GRMLogger.info('API', 'マージ実行開始', { date });
+    console.log('executeMergeByDate: date=' + date);
+    
+    // この日付のマージ候補を取得
+    const candidates = Merger.detectMergeCandidates(date);
+    
+    console.log('detectMergeCandidates result:', JSON.stringify({
+      canMerge: candidates.canMerge,
+      hasParent: candidates.hasParent,
+      parentTitle: candidates.parent?.title,
+      childrenCount: candidates.children?.length
+    }));
+    
+    if (!candidates.canMerge || !candidates.parent || candidates.children.length === 0) {
+      return { success: false, error: 'マージ対象がありません（親: ' + (candidates.hasParent ? '有' : '無') + '、子: ' + (candidates.children?.length || 0) + '件）' };
+    }
+    
+    let mergedCount = 0;
+    const parentEvent = candidates.parent;
+    
+    // 各子イベントをマージ
+    for (const child of candidates.children) {
+      console.log('マージ処理: 子=' + child.title + ' → 親=' + parentEvent.title);
+      
+      try {
+        // 子イベントのカレンダーオブジェクトを取得
+        const calendarId = Config.get('CALENDAR_ID');
+        const calendar = CalendarApp.getCalendarById(calendarId);
+        
+        // イベントIDからカレンダーイベントを取得
+        const childEventId = child.id;
+        
+        // 子イベントのタイトルを変更（親タイトル + マージ済みタグ）
+        const targetDate = new Date(date);
+        const startOfDay = new Date(targetDate);
+        startOfDay.setHours(0, 0, 0, 0);
+        const endOfDay = new Date(targetDate);
+        endOfDay.setHours(23, 59, 59, 999);
+        
+        const allEvents = calendar.getEvents(startOfDay, endOfDay);
+        
+        for (const event of allEvents) {
+          if (event.getId() === childEventId) {
+            const originalTitle = event.getTitle();
+            
+            // 親タイトルから残数情報または🈵を抽出
+            let parentSlotInfo = '';
+            const parentTitle = parentEvent.title || '';
+            if (parentTitle.includes('🈵')) {
+              parentSlotInfo = '🈵';
+            } else {
+              const slotMatch = parentTitle.match(/残数[1-3]/);
+              if (slotMatch) {
+                parentSlotInfo = slotMatch[0];
+              }
+            }
+            
+            // 子タイトルの残数部分を親の情報で置換
+            let modifiedTitle = originalTitle;
+            if (parentSlotInfo) {
+              // 残数Xを置換
+              modifiedTitle = modifiedTitle.replace(/残数[1-3]/, parentSlotInfo);
+            }
+            
+            // 先頭にマージ済みタグを追加
+            const newTitle = '＜マージ済み＞' + modifiedTitle;
+            event.setTitle(newTitle);
+            
+            // 親のメモを子のメモに追加（親+子）
+            const childDesc = event.getDescription() || '';
+            const parentDesc = parentEvent.description || '';
+            const combinedDesc = parentDesc + '\n\n--- 元の子予定メモ ---\n' + childDesc;
+            event.setDescription(combinedDesc);
+            
+            // マージログを記録（正しい関数名: logMergeV2）
+            try {
+              Merger.logMergeV2(
+                { id: childEventId, date: date, calendarEventId: childEventId },
+                { id: parentEvent.id, title: parentEvent.title, score: 190 }
+              );
+              console.log('マージログ記録成功');
+            } catch (logError) {
+              console.log('マージログ記録エラー: ' + logError.message);
+            }
+            
+            console.log('マージ完了: ' + newTitle);
+            mergedCount++;
+            break;
+          }
+        }
+      } catch (e) {
+        console.log('マージエラー: ' + e.message);
+      }
+    }
+    
+    GRMLogger.info('API', 'マージ実行完了', { date, mergedCount });
+    
+    return { success: true, count: mergedCount };
+    
+  } catch (e) {
+    GRMLogger.error('API', 'executeMergeByDate エラー', { error: e.message });
+    return { success: false, error: e.message };
+  }
+}
+
+/**
+ * WebUI用: すべてのマージ待ちを実行
+ * @returns {Object} { success: boolean, count: number }
+ */
+function executeAllMerges() {
+  try {
+    GRMLogger.info('API', '一括マージ実行開始');
+    
+    const allCandidates = Merger.detectAllMergeCandidates();
+    let totalMerged = 0;
+    
+    for (const candidate of allCandidates) {
+      const result = executeMergeByDate(candidate.date);
+      if (result.success) {
+        totalMerged += result.count || 0;
+      }
+    }
+    
+    GRMLogger.info('API', '一括マージ実行完了', { totalMerged });
+    
+    return { success: true, count: totalMerged };
+    
+  } catch (e) {
+    GRMLogger.error('API', 'executeAllMerges エラー', { error: e.message });
+    return { success: false, error: e.message };
+  }
+}
 
 /**
  * 初期化関数
@@ -2820,9 +3010,21 @@ function approveReservationToCalendar(reservationId) {
         
         console.log('✅ 承認完了: ' + reservationId);
         console.log('カレンダーイベントID: ' + eventId);
+        
+        // マージ候補を自動検出
+        const dateStr = eventDate.toISOString().split('T')[0];
+        let hasMergeCandidates = false;
+        try {
+          const mergeCandidates = Merger.detectMergeCandidates(dateStr);
+          hasMergeCandidates = mergeCandidates.canMerge;
+          console.log('マージ候補: ' + (hasMergeCandidates ? '有り（' + mergeCandidates.children.length + '件）' : '無し'));
+        } catch (e) {
+          console.log('マージ検出エラー: ' + e.message);
+        }
+        
         console.log('========================================');
         
-        return { success: true, id: reservationId, eventId: eventId, date: eventDate.toISOString() };
+        return { success: true, id: reservationId, eventId: eventId, date: eventDate.toISOString(), hasMergeCandidates: hasMergeCandidates };
       } catch (e) {
         console.log('❌ エラー: ' + e.message);
         console.log('スタック: ' + e.stack);
@@ -2897,8 +3099,18 @@ function approveAllReservationsToCalendar() {
     }
   }
   
+  // マージ候補を自動検出（承認した全日付に対して）
+  let mergeCandidatesCount = 0;
+  try {
+    const allMergeCandidates = Merger.detectAllMergeCandidates();
+    mergeCandidatesCount = allMergeCandidates.length;
+    console.log('マージ候補: ' + mergeCandidatesCount + '件検出');
+  } catch (e) {
+    console.log('マージ検出エラー: ' + e.message);
+  }
+  
   console.log('一括承認完了: ' + count + '件');
-  return { success: true, count: count, errors: errors };
+  return { success: true, count: count, errors: errors, mergeCandidatesCount: mergeCandidatesCount };
 }
 
 // ========================================

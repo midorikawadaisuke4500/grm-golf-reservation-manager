@@ -21,7 +21,7 @@ const GRMLogger = {
    * @param {Object} data - 追加データ
    */
   log(level, stage, message, data = {}) {
-    const timestamp = new Date().toISOString();
+    const timestamp = Utilities.formatDate(new Date(), 'Asia/Tokyo', 'yyyy-MM-dd HH:mm:ss');
     const logEntry = {
       timestamp,
       level,
@@ -172,13 +172,13 @@ ${logEntry.data}
       }
       
       transSheet.appendRow([
-        new Date().toISOString(),
-        stage,
-        action,
-        reservationId || '',
-        status,
-        JSON.stringify(details)
-      ]);
+      Utilities.formatDate(new Date(), 'Asia/Tokyo', 'yyyy-MM-dd HH:mm:ss'),
+      stage,
+      action,
+      reservationId || '',
+      status,
+      JSON.stringify(details)
+    ]);
     } catch (e) {
       console.error('トランザクションログエラー:', e);
     }
