@@ -310,7 +310,7 @@
 
                 if (pending.length > 0) {
                     html += `<h2 class="section-title" style="color:#d29922;">⏳ 承認待ち (${pending.length}件)
-                        <button class="btn btn-all" onclick="approveAll()">✅ 一括承認</button>
+                        <button type="button" class="btn btn-all" onclick="approveAll()">✅ 一括承認</button>
                     </h2>`;
                     pending.forEach(r => { html += renderCard(r, 'pending'); });
                 }
@@ -377,7 +377,7 @@
             const course = r.course || 'OUT';
             const badgeClass = status === 'pending' ? 'badge-pending' : 'badge-confirmed';
             const badgeText = status === 'pending' ? '承認待ち' : '確定済み';
-            const btn = status === 'pending' ? `<button class="btn" id="btn-${r.id}" onclick="approve('${r.id}', this)">✅ 承認</button>` : '';
+            const btn = status === 'pending' ? `<button type="button" class="btn" id="btn-${r.id}" onclick="approve('${r.id}', this)">✅ 承認</button>` : '';
 
             return `
                 <div class="card">
@@ -483,7 +483,7 @@
             // マージ待ち
             if (candidates.length > 0) {
                 html += `<h2 class="section-title" style="color:#d29922;">⚡ マージ待ち (${candidates.length}件)
-                    ${candidates.length > 1 ? '<button class="btn btn-all" onclick="mergeAll()">✅ 一括マージ</button>' : ''}
+                    ${candidates.length > 1 ? '<button type="button" class="btn btn-all" onclick="mergeAll()">✅ 一括マージ</button>' : ''}
                 </h2>`;
                 candidates.forEach(m => { html += renderMergeCard(m); });
             } else {
@@ -542,7 +542,7 @@
                         </div>
                     `).join('')}
                     
-                    <button class="btn" style="width:100%;margin-top:8px;" onclick="executeMerge('${merge.date}')">✅ マージを実行</button>
+                    <button type="button" class="btn" style="width:100%;margin-top:8px;" onclick="executeMerge('${merge.date}')">✅ マージを実行</button>
                 </div>`;
         }
 
