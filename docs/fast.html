@@ -210,6 +210,74 @@
         #content {
             min-height: 200px;
         }
+
+        /* カスタムモーダル */
+        .modal-overlay {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0, 0, 0, 0.8);
+            z-index: 1000;
+            justify-content: center;
+            align-items: center;
+        }
+
+        .modal-overlay.show {
+            display: flex;
+        }
+
+        .modal-box {
+            background: #21262d;
+            border: 1px solid #30363d;
+            border-radius: 12px;
+            padding: 24px;
+            max-width: 320px;
+            width: 90%;
+            text-align: center;
+        }
+
+        .modal-title {
+            font-size: 1.1rem;
+            font-weight: 700;
+            margin-bottom: 12px;
+            color: #f0f6fc;
+        }
+
+        .modal-message {
+            font-size: 0.9rem;
+            color: #8b949e;
+            margin-bottom: 20px;
+            line-height: 1.5;
+        }
+
+        .modal-buttons {
+            display: flex;
+            gap: 12px;
+            justify-content: center;
+        }
+
+        .modal-btn {
+            padding: 12px 24px;
+            border-radius: 8px;
+            font-size: 0.9rem;
+            font-weight: 600;
+            cursor: pointer;
+            border: none;
+            min-width: 100px;
+        }
+
+        .modal-btn-cancel {
+            background: #30363d;
+            color: #8b949e;
+        }
+
+        .modal-btn-ok {
+            background: #238636;
+            color: white;
+        }
     </style>
 </head>
 
@@ -242,6 +310,18 @@
         <div class="loading">📡 データ取得中...</div>
     </div>
 
+    <!-- カスタム確認モーダル -->
+    <div id="confirmModal" class="modal-overlay">
+        <div class="modal-box">
+            <div class="modal-title" id="modalTitle">確認</div>
+            <div class="modal-message" id="modalMessage"></div>
+            <div class="modal-buttons">
+                <button type="button" class="modal-btn modal-btn-cancel" onclick="closeModal(false)">キャンセル</button>
+                <button type="button" class="modal-btn modal-btn-ok" onclick="closeModal(true)">OK</button>
+            </div>
+        </div>
+    </div>
+
     <nav class="nav">
         <button class="nav-item active" onclick="showView('home')"><span class="nav-icon">🏠</span>ホーム</button>
         <button class="nav-item" onclick="showView('calendar')"><span class="nav-icon">📅</span>予約</button>
@@ -253,6 +333,26 @@
         const API = 'https://script.google.com/macros/s/AKfycbxgShQ0KaUeefltT8ti8tkCiF8vD-pf5ghn7KBzS7kXwGqFYy-lTAGRqOvu-fZwuyjj/exec';
         let data = { stats: {}, reservations: [] };
         let currentView = 'home';
+
+        // カスタム確認ダイアログ（ブラウザのconfirmを置き換え）
+        let modalResolve = null;
+
+        function customConfirm(title, message) {
+            return new Promise((resolve) => {
+                modalResolve = resolve;
+                document.getElementById('modalTitle').textContent = title;
+                document.getElementById('modalMessage').textContent = message;
+                document.getElementById('confirmModal').classList.add('show');
+            });
+        }
+
+        function closeModal(result) {
+            document.getElementById('confirmModal').classList.remove('show');
+            if (modalResolve) {
+                modalResolve(result);
+                modalResolve = null;
+            }
+        }
 
         // 即座にUIを表示（ダミーデータ）
         document.addEventListener('DOMContentLoaded', () => {
@@ -416,7 +516,8 @@
         }
 
         async function approveAll() {
-            if (!confirm('全て承認しますか？')) return;
+            const confirmed = await customConfirm('一括承認確認', '全て承認しますか？');
+            if (!confirmed) return;
             try {
                 const res = await fetch(API + '?action=approveAllReservations');
                 const result = await res.json();
@@ -550,10 +651,9 @@
         async function executeMerge(date) {
             if (isMerging) return; // ダブルクリック防止
 
-            // setTimeoutでダイアログを確実に表示
-            await new Promise(resolve => setTimeout(resolve, 100));
-
-            if (!confirm('この日付の予定をマージしますか？\\n\\n日付: ' + date)) return;
+            // カスタムモーダルで確認
+            const confirmed = await customConfirm('マージ確認', 'この日付の予定をマージしますか？\n\n日付: ' + date);
+            if (!confirmed) return;
 
             isMerging = true;
             try {
@@ -574,7 +674,8 @@
 
         async function mergeAll() {
             const count = mergeData.candidates.length;
-            if (!confirm(count + '件のマージ待ちをすべてマージしますか？')) return;
+            const confirmed = await customConfirm('一括マージ確認', count + '件のマージ待ちをすべてマージしますか？');
+            if (!confirmed) return;
             try {
                 const res = await fetch(API + '?action=executeMergeAll');
                 const result = await res.json();
