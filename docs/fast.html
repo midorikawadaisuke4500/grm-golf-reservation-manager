@@ -546,8 +546,16 @@
                 </div>`;
         }
 
+        let isMerging = false;
         async function executeMerge(date) {
-            if (!confirm('この日付の予定をマージしますか？')) return;
+            if (isMerging) return; // ダブルクリック防止
+
+            // setTimeoutでダイアログを確実に表示
+            await new Promise(resolve => setTimeout(resolve, 100));
+
+            if (!confirm('この日付の予定をマージしますか？\\n\\n日付: ' + date)) return;
+
+            isMerging = true;
             try {
                 const res = await fetch(API + '?action=executeMerge&date=' + encodeURIComponent(date));
                 const result = await res.json();
@@ -559,6 +567,8 @@
                 }
             } catch (e) {
                 alert('❌ エラー: ' + e.message);
+            } finally {
+                isMerging = false;
             }
         }
 
