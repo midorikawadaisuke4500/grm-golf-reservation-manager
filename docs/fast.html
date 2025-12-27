@@ -522,7 +522,7 @@
                 const res = await fetch(API + '?action=approveAllReservations');
                 const result = await res.json();
                 if (result.success) {
-                    alert('✅ ' + result.count + '件を登録しました');
+                    // 無音で完了（alertなし）
                     await loadData();
                 } else {
                     alert('❌ 失敗: ' + (result.error || ''));
