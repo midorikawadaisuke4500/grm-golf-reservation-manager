@@ -501,7 +501,7 @@
                 const res = await fetch(API + '?action=approveReservation&id=' + id);
                 const result = await res.json();
                 if (result.success) {
-                    alert('✅ カレンダーに登録しました');
+                    // 無音で完了（alertなし）
                     await loadData();
                 } else {
                     alert('❌ 失敗: ' + (result.error || ''));
