@@ -660,7 +660,7 @@
                 const res = await fetch(API + '?action=executeMerge&date=' + encodeURIComponent(date));
                 const result = await res.json();
                 if (result.success) {
-                    alert('✅ マージが完了しました');
+                    // 無音で完了（alertなし）
                     loadMergeCandidates();
                 } else {
                     alert('❌ マージに失敗: ' + (result.error || ''));
@@ -680,7 +680,7 @@
                 const res = await fetch(API + '?action=executeMergeAll');
                 const result = await res.json();
                 if (result.success) {
-                    alert('✅ ' + (result.count || count) + '件のマージが完了しました');
+                    // 無音で完了（alertなし）
                     loadMergeCandidates();
                 } else {
                     alert('❌ マージに失敗: ' + (result.error || ''));
